@@ -13,8 +13,8 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 def generate_script_with_ai(title, channel, video_url, keywords_str):
     """Menggunakan Gemini AI untuk generate script TikTok yang dinamis"""
     
-    # URL FIX RESMI: Menggunakan format endpoint Google AI Studio yang valid
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # FIX MODEL ENDPOINT: Menggunakan model terbaru gemini-2.5-flash yang aktif dan stabil
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     prompt = f"""
     Kamu adalah Magnus, seorang Script Writer TikTok profesional dan Content Strategist spesialis ceruk Karir Korporat & Dunia Kerja di Indonesia.
