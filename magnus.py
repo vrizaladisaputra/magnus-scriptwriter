@@ -61,15 +61,20 @@ def generate_script_with_ai(title, channel, video_url, keywords_str):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
 
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=20)
-        response.raise_for_status()
-        res_data = response.json()
-        ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
-        return ai_text
-    except Exception as e:
-        print(f"Gemini API Error: {e}")
-        return f"⚠️ Magnus gagal mikir pake AI. Detail error: {e}"
+    # FIX TIMEOUT & RETRY LAYER
+    for attempt in range(3):
+        try:
+            # Menaikkan timeout ke 60 detik agar aman dari delay server Google
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            response.raise_for_status()
+            res_data = response.json()
+            ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
+            return ai_text
+        except Exception as e:
+            print(f"Percobaan ke-{attempt+1} gagal: {e}")
+            if attempt == 2:
+                return f"⚠️ Magnus gagal mikir pake AI setelah 3x coba. Detail error: {e}"
+            time.sleep(2) # Jeda sebelum coba lagi
 
 def send_to_telegram(text):
     url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
@@ -78,7 +83,7 @@ def send_to_telegram(text):
         "text": text, 
         "parse_mode": "HTML", 
         "disable_web_page_preview": True,
-        "message_thread_id": MAGNUS_TOPIC_ID  # Kirim naskah khusus ke topik Magnus
+        "message_thread_id": MAGNUS_TOPIC_ID
     }
     try:
         requests.post(url, json=payload, timeout=10)
@@ -101,14 +106,11 @@ def listen_to_carl():
             
             for update in updates:
                 offset = update["update_id"] + 1
-                
-                # FIX STRUKTUR TOPICS: Ekstrak message dari berbagai jenis update di Telegram Group Forum
                 message_obj = update.get("message") or update.get("edited_message") or update.get("channel_post")
                 
                 if message_obj and "text" in message_obj:
                     msg_text = message_obj["text"].strip()
                     
-                    # Cek apakah chat mengandung kata kunci GENERATE_SCRIPT (baik di-tag maupun tidak)
                     if "GENERATE_SCRIPT" in msg_text:
                         print("⚡ Magnus mendeteksi rekues naskah di forum! Memproses...")
                         lines = msg_text.split("\n")
