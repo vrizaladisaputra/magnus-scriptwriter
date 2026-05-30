@@ -13,7 +13,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 def generate_script_with_ai(title, channel, video_url, keywords_str):
     """Menggunakan Gemini AI untuk generate script TikTok yang dinamis"""
     
-    # FIX URL: Menggunakan endpoint resmi Google AI Studio v1beta
+    # URL FIX RESMI: Menggunakan format endpoint Google AI Studio yang valid
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     prompt = f"""
