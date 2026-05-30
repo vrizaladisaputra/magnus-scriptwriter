@@ -28,12 +28,12 @@ def generate_script_with_ai(title, channel, video_url, keywords_str):
     
     Format Output Harus Mengikuti Struktur Ini:
     🧙‍♂️ <b>MAGNUS — TikTok Script Writer</b>
-    <i>Inspirasi Konten: [Judul Video] ([Nama Channel])</i>
-    🔗 [Link Video URL]
+    <i>Inspirasi Konten: {title} ({channel})</i>
+    🔗 {video_url}
     ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═
     
     ⏱ <b>Durasi Target:</b> ~60 Detik
-    🎯 <b>Rumpun Topik:</b> #[Tentukan topik contoh: gaji/promosi/resign]
+    🎯 <b>Rumpun Topik:</b> #gaji_atau_promosi_atau_resign
     
     <b>[0-5s] HOOK (Bikin hook yang out-of-the-box, langsung nembak keresahan penonton):</b>
     🎙 <i>(Tatap kamera, ekspresi serius/penasaran)</i>
@@ -53,7 +53,7 @@ def generate_script_with_ai(title, channel, video_url, keywords_str):
     
     ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═
     💡 <b>Rekomendasi Hashtag:</b>
-    #tipskarir #korporat #kantor #duniakerja #[tambah hashtag relevan]
+    #tipskarir #korporat #kantor #duniakerja
     """
 
     payload = {
@@ -68,9 +68,6 @@ def generate_script_with_ai(title, channel, video_url, keywords_str):
         response.raise_for_status()
         res_data = response.json()
         ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
-        
-        # Selipkan info asli ke output jika belum ter-replace otomatis
-        ai_text = ai_text.replace("[Judul Video]", title).replace("[Nama Channel]", channel).replace("[Link Video URL]", video_url)
         return ai_text
         
     except Exception as e:
@@ -101,9 +98,6 @@ def listen_to_carl():
             
             for update in updates:
                 offset = update["update_id"] + 1
-                if "callback_query" in update:
-                    continue
-                    
                 if "message" in update and "text" in update["message"]:
                     msg_text = update["message"]["text"]
                     
@@ -111,10 +105,21 @@ def listen_to_carl():
                         print("⚡ Magnus menerima sinyal! Sedang memproses ide dengan Gemini AI...")
                         lines = msg_text.split("\n")
                         
-                        title = lines[1].replace("TITLE:", "") if len(lines) > 1 else "Konten Viral"
-                        channel = lines[2].replace("CHANNEL:", "") if len(lines) > 2 else "Anonim"
-                        video_url = lines[3].replace("URL:", "") if len(lines) > 3 else ""
-                        keywords = lines[4].replace("KEYWORDS:", "") if len(lines) > 4 else "default"
+                        # Menggunakan pencarian berbasis teks (lebih aman dari gangguan preview link)
+                        title = "Konten Viral"
+                        channel = "Anonim"
+                        video_url = ""
+                        keywords = "default"
+                        
+                        for line in lines:
+                            if line.startswith("TITLE:"):
+                                title = line.replace("TITLE:", "").strip()
+                            elif line.startswith("CHANNEL:"):
+                                channel = line.replace("CHANNEL:", "").strip()
+                            elif line.startswith("URL:"):
+                                video_url = line.replace("URL:", "").strip()
+                            elif line.startswith("KEYWORDS:"):
+                                keywords = line.replace("KEYWORDS:", "").strip()
                         
                         script = generate_script_with_ai(title, channel, video_url, keywords)
                         send_to_telegram(script)
