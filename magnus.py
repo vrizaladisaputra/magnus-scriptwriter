@@ -101,11 +101,11 @@ def listen_to_carl():
                 if "message" in update and "text" in update["message"]:
                     msg_text = update["message"]["text"]
                     
+                    # FIX UTAMA: Langsung proses selama teks diawali GENERATE_SCRIPT tanpa cek ID pengirim
                     if msg_text.startswith("GENERATE_SCRIPT"):
-                        print("⚡ Magnus menerima sinyal! Sedang memproses ide dengan Gemini AI...")
+                        print("⚡ Magnus menerima sinyal valid! Sedang memproses ide dengan Gemini AI...")
                         lines = msg_text.split("\n")
                         
-                        # Menggunakan pencarian berbasis teks (lebih aman dari gangguan preview link)
                         title = "Konten Viral"
                         channel = "Anonim"
                         video_url = ""
