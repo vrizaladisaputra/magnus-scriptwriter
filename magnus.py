@@ -10,132 +10,185 @@ MAGNUS_TOKEN = os.environ.get("MAGNUS_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# ID TOPIK SPESIFIK MAGNUS
 MAGNUS_TOPIC_ID = 4
+MEMORY_FILE = "/data/memory.json"
 
-def generate_script_with_ai(title, channel, video_url, keywords_str):
-    """Menggunakan Gemini AI untuk generate script TikTok yang dinamis"""
+CURRENT_AGENT_DATA = {}
+USER_STATE = {}
+
+def load_memory():
+    """Membaca ingatan masa lalu dari harddisk virtual"""
+    if os.path.exists(MEMORY_FILE):
+        try:
+            with open(MEMORY_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_memory(data_to_save):
+    """Menyimpan skrip + feedback rating secara permanen"""
+    os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
+    memory = load_memory()
+    memory.append(data_to_save)
+    # Membatasi ingatan hingga 15 skrip emas terakhir agar AI fokus pada pola terbaru
+    if len(memory) > 15:
+        memory = memory[-15:]
+    with open(MEMORY_FILE, 'w') as f:
+        json.dump(memory, f, indent=4)
+
+def generate_script_with_ai(title, channel, video_url):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     
+    # 1. BACA HISTORI + BOBOT RATING MASA LALU (EXPERIENCE LOOP)
+    past_memory = load_memory()
+    memory_context = ""
+    if past_memory:
+        memory_context = "\n⚠️ [PENTING] PELAJARI RIWAYAT PENGALAMAN & EVALUASI GAYA BAHASA SEBELUMNYA DI BAWAH INI:\n"
+        for mem in past_memory:
+            status = mem.get("status")
+            script_content = mem.get("script", "")
+            
+            if status == "RATING_4":
+                memory_context += f"👉 [RATING 4/4 - PERFECT STYLE (TIRU TOTAL)]: User menilai skrip ini 100% SANGAT SEMPURNA mencerminkan dirinya. Pelajari pilihan katanya, flow, hook, gaya santainya, dan REPLIKASI gaya bahasa ini secara utuh:\n\"\"\"{script_content}\"\"\"\n\n"
+            elif status == "RATING_3":
+                memory_context += f"👉 [RATING 3/4 - GREAT STYLE (IKUTI SEBAGIAN BESAR)]: Skrip ini hampir sempurna dan mendekati gaya asli user. Gunakan tone, struktur kalimat, dan ritme dari skrip ini sebagai acuan utama:\n\"\"\"{script_content}\"\"\"\n\n"
+            elif status == "RATING_2":
+                memory_context += f"👉 [RATING 2/4 - GOOD BUT NOT ME (CUKUP CATAT SEDIKIT)]: Skrip ini isinya bagus tapi gaya bahasanya kurang mencerminkan kepribadian user. Ambil poin solusinya saja, tetapi rombak total gayanya agar tidak terlalu kaku/baku seperti skrip ini:\n\"\"\"{script_content}\"\"\"\n\n"
+            elif status == "REVISED":
+                memory_context += f"👉 [KRITIK TEXTUAL USER]: Pada skrip lalu, user memberikan koreksi spesifik: \"{mem['feedback']}\". Perbaiki kekurangan ini sekarang!\n\n"
+
+    # 2. PROMPT AGENT YANG DILENGKAPI OTAK PEMBOBOTAN
     prompt = f"""
-    Kamu adalah Magnus, seorang Script Writer TikTok profesional dan Content Strategist spesialis ceruk Karir Korporat & Dunia Kerja di Indonesia.
-    Tugas kamu adalah membuat skrip Short Video TikTok berdurasi 1 menit (~130-150 kata) berdasarkan topik video viral berikut:
+    Kamu adalah Magnus, seorang AI Content Agent khusus TikTok ceruk Karir Korporat & Dunia Kerja Indonesia.
+    Kamu adalah agen cerdas yang berevolusi dengan mempelajari tingkat rating kecocokan gaya bahasa dari user.
     
-    Judul Video Viral: "{title}"
-    Channel / Kreator: {channel}
-    Kata Kunci Terkait: {keywords_str}
+    Tugas kamu: Buat skrip TikTok 1 menit (~130-150 kata) dengan formula PAS (Problem, Agitate, Solution).
+    Tone utama: Santai, blak-blakan anak kantor Jakarta (pake 'lo'/'gue'), relatable, tajam, tapi berbobot.
     
-    Gunakan formula psikologi konten: PAS (Problem, Agitate, Solution) + CTA.
-    Tone: Santai, relatable, blak-blakan (pake kata 'lo', 'gue', 'kantor', 'bos'), kayak lagi ngobrol/curhat sama temen kerja tapi tetep berbobot (berisi fakta keras dunia kerja). Jangan pake bahasa baku atau kaku!
+    Topik Konten Baru:
+    Judul Inspirasi: "{title}" | Channel: {channel} ({video_url})
+    {memory_context}
     
     Format Output Harus Mengikuti Struktur Ini:
-    🧙‍♂️ <b>MAGNUS — TikTok Script Writer</b>
-    <i>Inspirasi Konten: {title} ({channel})</i>
-    🔗 {video_url}
+    🧙‍♂️ <b>MAGNUS — AI Agent (Adaptive Memory Mode)</b>
+    <i>Inspirasi Konten: {title}</i>
     ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═
     
-    ⏱ <b>Durasi Target:</b> ~60 Detik
-    🎯 <b>Rumpun Topik:</b> #karir
-    
-    <b>[0-5s] HOOK (Bikin hook yang out-of-the-box, langsung nembak keresahan penonton):</b>
-    🎙 <i>(Tatap kamera, ekspresi serius/penasaran)</i>
-    "[Tulis kalimat hook di sini]"
-    
-    <b>[5-20s] AGITATE (Goreng masalahnya sampai penonton ngerasa nyesek/relate):</b>
-    🎙 <i>(Nada empati, kayak curhat antar temen)</i>
-    "[Tulis bagian agitate di sini]"
-    
-    <b>[20-50s] SOLUTION (Kasih 1-2 taktik konkret atau mind-blowing yang bisa langsung dicoba di kantor):</b>
-    🎙 <i>(Nada tegas, ngasih daging/insight)</i>
-    "[Tulis solusi praktis di sini]"
-    
-    <b>[50-60s] CTA (Ajakan interaksi yang memancing orang buat debat atau curhat di komen):</b>
-    🎙 <i>(Senyum, ajak interaksi ringan)</i>
-    "[Tulis kalimat CTA unik di sini]"
-    
+    <b>[0-5s] HOOK:</b> "[Tulis kalimat hook]"
+    <b>[5-20s] AGITATE:</b> "[Goreng masalahnya]"
+    <b>[20-50s] SOLUTION:</b> "[Kasih solusi taktis korporat]"
+    <b>[50-60s] CTA:</b> "[Ajakan interaksi debat/curhat di komen]"
     ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═
-    💡 <b>Rekomendasi Hashtag:</b>
-    #tipskarir #korporat #kantor #duniakerja
+    💡 #tipskarir #korporat #duniakerja
     """
 
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    headers = {"Content-Type": "application/json"}
-
-    # FIX TIMEOUT & RETRY LAYER
     for attempt in range(3):
         try:
-            # Menaikkan timeout ke 60 detik agar aman dari delay server Google
-            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
             response.raise_for_status()
-            res_data = response.json()
-            ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
-            return ai_text
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
         except Exception as e:
-            print(f"Percobaan ke-{attempt+1} gagal: {e}")
-            if attempt == 2:
-                return f"⚠️ Magnus gagal mikir pake AI setelah 3x coba. Detail error: {e}"
-            time.sleep(2) # Jeda sebelum coba lagi
+            if attempt == 2: return f"⚠️ Gemini API Error: {e}"
+            time.sleep(2)
 
-def send_to_telegram(text):
+def send_script_with_rating_buttons(text, title):
     url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID, 
-        "text": text, 
-        "parse_mode": "HTML", 
-        "disable_web_page_preview": True,
-        "message_thread_id": MAGNUS_TOPIC_ID
+        "chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True, "message_thread_id": MAGNUS_TOPIC_ID,
+        "reply_markup": {
+            "inline_keyboard": [
+                [
+                    {"text": "1️⃣ Acceptable", "callback_data": f"rat_1_{title[:20]}"},
+                    {"text": "2️⃣ Good (Not Me)", "callback_data": f"rat_2_{title[:20]}"}
+                ],
+                [
+                    {"text": "3️⃣ Great (Almost Me)", "callback_data": f"rat_3_{title[:20]}"},
+                    {"text": "4️⃣ Perfect (It's Me)", "callback_data": f"rat_4_{title[:20]}"}
+                ],
+                [
+                    {"text": "❌ Revise / Kritik Manual", "callback_data": f"rev_{title[:20]}"}
+                ]
+            ]
+        }
     }
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"Magnus gagal kirim chat: {e}")
+    try: requests.post(url, json=payload, timeout=10)
+    except: pass
+
+def send_plain_message(text):
+    url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "message_thread_id": MAGNUS_TOPIC_ID}
+    try: requests.post(url, json=payload, timeout=10)
+    except: pass
 
 def listen_to_carl():
     offset = None
-    url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/getUpdates"
-    print("🧙‍♂️ Magnus AI standby di Forum Topics grup...")
+    global CURRENT_AGENT_DATA, USER_STATE
+    print("🧙‍♂️ Magnus AI Agent standby dengan 4-Skala Pembobotan Rating...")
     
     while True:
         try:
-            params = {"timeout": 30}
-            if offset:
-                params["offset"] = offset
-            
-            response = requests.get(url, params=params, timeout=35).json()
-            updates = response.get("result", [])
-            
-            for update in updates:
+            url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/getUpdates"
+            res = requests.get(url, params={"timeout": 30, "offset": offset}, timeout=35).json()
+            for update in res.get("result", []):
                 offset = update["update_id"] + 1
-                message_obj = update.get("message") or update.get("edited_message") or update.get("channel_post")
                 
+                # Handler Klik Tombol
+                if "callback_query" in update:
+                    cq = update["callback_query"]
+                    cb_data = cq.get("data", "")
+                    requests.post(f"https://api.telegram.org/bot{MAGNUS_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq["id"]})
+                    
+                    # Logic 4 Tingkat Rating
+                    if cb_data.startswith("rat_"):
+                        rating = int(cb_data.split("_")[1])
+                        
+                        labels = {
+                            1: "1/4 - Acceptable (Gak disimpan ke Memori)",
+                            2: "2/4 - Good, but doesn't sound like me (Dicatat Sedikit)",
+                            3: "3/4 - Great, mostly sounds like me (Dicatat Sebagian Besar)",
+                            4: "4/4 - Perfect, sounds like me (Standar Emas - Catat Total!)"
+                        }
+                        
+                        if rating == 1:
+                            send_plain_message("👌 <b>Noted:</b> Skrip dinilai <b>Acceptable</b>. Gak dimasukkan ke database memori biar gak menuh-menuhin otak Magnus.")
+                        else:
+                            save_memory({
+                                "title": CURRENT_AGENT_DATA.get("title", "Konten"),
+                                "status": f"RATING_{rating}",
+                                "script": CURRENT_AGENT_DATA.get("script", ""),
+                                "feedback": labels[rating]
+                            })
+                            send_plain_message(f"🧠 <b>Memori Diupdate:</b> Magnus mempelajari skrip dengan bobot <b>Rating {rating}/4</b>\n<i>({labels[rating]})</i>.")
+                    
+                    elif cb_data.startswith("rev_"):
+                        USER_STATE[TELEGRAM_CHAT_ID] = "WAITING_REVISION"
+                        send_plain_message("✍️ <b>Kritik Manual:</b> Bagian mana yang kurang oke, bro? Ketik koreksinya langsung di sini...")
+                
+                # Handler Pesan Teks
+                message_obj = update.get("message") or update.get("edited_message")
                 if message_obj and "text" in message_obj:
                     msg_text = message_obj["text"].strip()
                     
+                    if USER_STATE.get(TELEGRAM_CHAT_ID) == "WAITING_REVISION":
+                        save_memory({"title": CURRENT_AGENT_DATA.get("title", "Konten"), "status": "REVISED", "script": CURRENT_AGENT_DATA.get("script", ""), "feedback": msg_text})
+                        send_plain_message(f"💡 <b>Memori Diupdate:</b> Evaluasi lo dicatat: <i>\"{msg_text}\"</i>.")
+                        USER_STATE[TELEGRAM_CHAT_ID] = None
+                        continue
+                    
                     if "GENERATE_SCRIPT" in msg_text:
-                        print("⚡ Magnus mendeteksi rekues naskah di forum! Memproses...")
                         lines = msg_text.split("\n")
-                        
-                        title = "Konten Viral"
-                        channel = "Anonim"
-                        video_url = ""
-                        keywords = "default"
-                        
+                        title, channel, video_url = "Konten Viral", "Anonim", ""
                         for line in lines:
-                            if "TITLE:" in line:
-                                title = line.split("TITLE:")[-1].strip()
-                            elif "CHANNEL:" in line:
-                                channel = line.split("CHANNEL:")[-1].strip()
-                            elif "URL:" in line:
-                                video_url = line.split("URL:")[-1].strip()
-                            elif "KEYWORDS:" in line:
-                                keywords = line.split("KEYWORDS:")[-1].strip()
+                            if "TITLE:" in line: title = line.split("TITLE:")[-1].strip()
+                            elif "CHANNEL:" in line: channel = line.split("CHANNEL:")[-1].strip()
+                            elif "URL:" in line: video_url = line.split("URL:")[-1].strip()
                         
-                        script = generate_script_with_ai(title, channel, video_url, keywords)
-                        send_to_telegram(script)
-                        
-        except Exception as e:
-            print(f"Magnus Topics Polling Error: {e}")
-            time.sleep(5)
+                        script = generate_script_with_ai(title, channel, video_url)
+                        CURRENT_AGENT_DATA = {"title": title, "channel": channel, "video_url": video_url, "script": script}
+                        send_script_with_rating_buttons(script, title)
+        except: time.sleep(5)
 
 if __name__ == "__main__":
     listen_to_carl()
