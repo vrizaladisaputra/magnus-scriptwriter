@@ -2,6 +2,8 @@ import os
 import requests
 import time
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # ============================================================
 # KONFIGURASI BOT MAGNUS + GEMINI AI
@@ -122,10 +124,52 @@ def send_plain_message(text):
     try: requests.post(url, json=payload, timeout=10)
     except: pass
 
+# ============================================================
+# LAYER KONEKSI HTTP SERVER (JALUR TOL INTERAL RAILWAY)
+# ============================================================
+class MagnusHTTPHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        if self.path == "/generate":
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            title = data.get("title", "Konten Viral")
+            channel = data.get("channel", "Anonim")
+            video_url = data.get("video_url", "")
+            
+            # Jalankan generate script di thread terpisah agar respon HTTP cepat kembali
+            threading.Thread(target=process_internal_trigger, args=(title, channel, video_url)).start()
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "received"}).encode('utf-8'))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+def process_internal_trigger(title, channel, video_url):
+    global CURRENT_AGENT_DATA
+    send_plain_message(f"⚡ <b>Magnus AI Agent:</b> Menerima instruksi langsung dari Carl! Mulai memikirkan skrip untuk: <i>\"{title}\"</i>...")
+    script = generate_script_with_ai(title, channel, video_url)
+    CURRENT_AGENT_DATA = {"title": title, "channel": channel, "video_url": video_url, "script": script}
+    send_script_with_rating_buttons(script, title)
+
+def run_http_server():
+    # Railway menyediakan port dinamis lewat variabel PORT (default ke 8080)
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), MagnusHTTPHandler)
+    print(f"🖥️ Magnus HTTP Server berjalan di port {port}...")
+    server.serve_forever()
+
+# ============================================================
+# TELEGRAM POLLING LOOP (Khusus menangkap interaksi Manusia)
+# ============================================================
 def listen_to_carl():
     offset = None
     global CURRENT_AGENT_DATA, USER_STATE
-    print("🧙‍♂️ Magnus AI Agent standby dengan 4-Skala Pembobotan Rating...")
+    print("🧙‍♂️ Magnus AI Agent standby menangkap klik tombol rating Anda...")
     
     while True:
         try:
@@ -134,25 +178,23 @@ def listen_to_carl():
             for update in res.get("result", []):
                 offset = update["update_id"] + 1
                 
-                # Handler Klik Tombol
+                # Menangkap Klik Tombol Rating dari Manusia (Bukan Bot!)
                 if "callback_query" in update:
                     cq = update["callback_query"]
                     cb_data = cq.get("data", "")
                     requests.post(f"https://api.telegram.org/bot{MAGNUS_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq["id"]})
                     
-                    # Logic 4 Tingkat Rating
                     if cb_data.startswith("rat_"):
                         rating = int(cb_data.split("_")[1])
-                        
                         labels = {
-                            1: "1/4 - Acceptable (Gak disimpan ke Memori)",
-                            2: "2/4 - Good, but doesn't sound like me (Dicatat Sedikit)",
-                            3: "3/4 - Great, mostly sounds like me (Dicatat Sebagian Besar)",
-                            4: "4/4 - Perfect, sounds like me (Standar Emas - Catat Total!)"
+                            1: "1/4 - Acceptable (Abaikan dari Memori)",
+                            2: "2/4 - Good (Dicatat Sedikit)",
+                            3: "3/4 - Great (Dicatat Sebagian Besar)",
+                            4: "4/4 - Perfect (Standar Emas - Replikasi Total!)"
                         }
                         
                         if rating == 1:
-                            send_plain_message("👌 <b>Noted:</b> Skrip dinilai <b>Acceptable</b>. Gak dimasukkan ke database memori biar gak menuh-menuhin otak Magnus.")
+                            send_plain_message("👌 <b>Noted:</b> Skrip dinilai <b>Acceptable</b>. Tidak disimpan ke memori.")
                         else:
                             save_memory({
                                 "title": CURRENT_AGENT_DATA.get("title", "Konten"),
@@ -160,35 +202,25 @@ def listen_to_carl():
                                 "script": CURRENT_AGENT_DATA.get("script", ""),
                                 "feedback": labels[rating]
                             })
-                            send_plain_message(f"🧠 <b>Memori Diupdate:</b> Magnus mempelajari skrip dengan bobot <b>Rating {rating}/4</b>\n<i>({labels[rating]})</i>.")
+                            send_plain_message(f"🧠 <b>Memori Diupdate:</b> Magnus mempelajari gaya skrip ini dengan bobot <b>Rating {rating}/4</b>.")
                     
                     elif cb_data.startswith("rev_"):
                         USER_STATE[TELEGRAM_CHAT_ID] = "WAITING_REVISION"
-                        send_plain_message("✍️ <b>Kritik Manual:</b> Bagian mana yang kurang oke, bro? Ketik koreksinya langsung di sini...")
+                        send_plain_message("✍️ <b>Kritik Manual:</b> Bagian mana yang kurang oke, bos? Ketik koreksinya langsung di sini...")
                 
-                # Handler Pesan Teks
+                # Menangkap Masukan Kritik Manual dari Manusia
                 message_obj = update.get("message") or update.get("edited_message")
                 if message_obj and "text" in message_obj:
                     msg_text = message_obj["text"].strip()
                     
                     if USER_STATE.get(TELEGRAM_CHAT_ID) == "WAITING_REVISION":
                         save_memory({"title": CURRENT_AGENT_DATA.get("title", "Konten"), "status": "REVISED", "script": CURRENT_AGENT_DATA.get("script", ""), "feedback": msg_text})
-                        send_plain_message(f"💡 <b>Memori Diupdate:</b> Evaluasi lo dicatat: <i>\"{msg_text}\"</i>.")
+                        send_plain_message(f"💡 <b>Memori Diupdate:</b> Evaluasi Anda dicatat: <i>\"{msg_text}\"</i>.")
                         USER_STATE[TELEGRAM_CHAT_ID] = None
-                        continue
-                    
-                    if "GENERATE_SCRIPT" in msg_text:
-                        lines = msg_text.split("\n")
-                        title, channel, video_url = "Konten Viral", "Anonim", ""
-                        for line in lines:
-                            if "TITLE:" in line: title = line.split("TITLE:")[-1].strip()
-                            elif "CHANNEL:" in line: channel = line.split("CHANNEL:")[-1].strip()
-                            elif "URL:" in line: video_url = line.split("URL:")[-1].strip()
                         
-                        script = generate_script_with_ai(title, channel, video_url)
-                        CURRENT_AGENT_DATA = {"title": title, "channel": channel, "video_url": video_url, "script": script}
-                        send_script_with_rating_buttons(script, title)
         except: time.sleep(5)
 
 if __name__ == "__main__":
+    # Jalankan HTTP server di thread terpisah agar tidak memblokir Telegram polling
+    threading.Thread(target=run_http_server, daemon=True).start()
     listen_to_carl()
