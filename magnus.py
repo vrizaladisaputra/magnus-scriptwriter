@@ -86,14 +86,20 @@ def generate_script_with_ai(title, channel, video_url):
     """
 
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    for attempt in range(3):
+    
+    # SYSTEM UPGRADE: Jaringan pengaman coba ulang dengan Exponential Backoff (Maksimal 5 Kali)
+    backoff_delays = [1, 2, 4, 8, 16]
+    for attempt in range(5):
         try:
             response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
             response.raise_for_status()
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
+            res_data = response.json()
+            ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
+            return ai_text
         except Exception as e:
-            if attempt == 2: return f"⚠️ Gemini API Error: {e}"
-            time.sleep(2)
+            if attempt == 4:
+                return f"⚠️ Gemini API Error setelah 5x coba ulang: {e}\n\n<i>(Sepertinya server Google sedang bermasalah di regional Anda. Silakan coba klik tombol generate kembali beberapa menit lagi, bos!)</i>"
+            time.sleep(backoff_delays[attempt])
 
 def send_script_with_rating_buttons(text, title):
     url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
@@ -138,7 +144,7 @@ class MagnusHTTPHandler(BaseHTTPRequestHandler):
             channel = data.get("channel", "Anonim")
             video_url = data.get("video_url", "")
             
-            # Jalankan generate script di thread terpisah agar respon HTTP cepat kembali
+            # Jalankan di thread terpisah agar respon HTTP cepat kembali
             threading.Thread(target=process_internal_trigger, args=(title, channel, video_url)).start()
             
             self.send_response(200)
@@ -157,14 +163,13 @@ def process_internal_trigger(title, channel, video_url):
     send_script_with_rating_buttons(script, title)
 
 def run_http_server():
-    # Railway menyediakan port dinamis lewat variabel PORT (default ke 8080)
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(('0.0.0.0', port), MagnusHTTPHandler)
     print(f"🖥️ Magnus HTTP Server berjalan di port {port}...")
     server.serve_forever()
 
 # ============================================================
-# TELEGRAM POLLING LOOP (Khusus menangkap interaksi Manusia)
+# TELEGRAM POLLING LOOP
 # ============================================================
 def listen_to_carl():
     offset = None
@@ -178,7 +183,6 @@ def listen_to_carl():
             for update in res.get("result", []):
                 offset = update["update_id"] + 1
                 
-                # Menangkap Klik Tombol Rating dari Manusia (Bukan Bot!)
                 if "callback_query" in update:
                     cq = update["callback_query"]
                     cb_data = cq.get("data", "")
@@ -208,7 +212,6 @@ def listen_to_carl():
                         USER_STATE[TELEGRAM_CHAT_ID] = "WAITING_REVISION"
                         send_plain_message("✍️ <b>Kritik Manual:</b> Bagian mana yang kurang oke, bos? Ketik koreksinya langsung di sini...")
                 
-                # Menangkap Masukan Kritik Manual dari Manusia
                 message_obj = update.get("message") or update.get("edited_message")
                 if message_obj and "text" in message_obj:
                     msg_text = message_obj["text"].strip()
@@ -221,6 +224,5 @@ def listen_to_carl():
         except: time.sleep(5)
 
 if __name__ == "__main__":
-    # Jalankan HTTP server di thread terpisah agar tidak memblokir Telegram polling
     threading.Thread(target=run_http_server, daemon=True).start()
     listen_to_carl()
