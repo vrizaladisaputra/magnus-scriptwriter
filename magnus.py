@@ -40,7 +40,8 @@ def save_memory(data_to_save):
         json.dump(memory, f, indent=4)
 
 def generate_script_with_ai(title, channel, video_url):
-    url = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=){GEMINI_API_KEY}"
+    # FIX: Membersihkan URL Gemini dari format Markdown Link pengganggu
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     # 1. BACA HISTORI + BOBOT RATING MASA LALU (EXPERIENCE LOOP)
     past_memory = load_memory()
@@ -121,7 +122,8 @@ def generate_script_with_ai(title, channel, video_url):
             time.sleep(backoff_delays[attempt])
 
 def send_script_with_rating_buttons(text, title):
-    url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){MAGNUS_TOKEN}/sendMessage"
+    # FIX: Membersihkan URL Telegram dari format Markdown Link pengganggu
+    url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True, "message_thread_id": MAGNUS_TOPIC_ID,
         "reply_markup": {
@@ -144,7 +146,8 @@ def send_script_with_rating_buttons(text, title):
     except: pass
 
 def send_plain_message(text):
-    url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){MAGNUS_TOKEN}/sendMessage"
+    # FIX: Membersihkan URL Telegram dari format Markdown Link pengganggu
+    url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "message_thread_id": MAGNUS_TOPIC_ID}
     try: requests.post(url, json=payload, timeout=10)
     except: pass
@@ -196,7 +199,8 @@ def listen_to_carl():
     
     while True:
         try:
-            url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){MAGNUS_TOKEN}/getUpdates"
+            # FIX: Membersihkan URL Telegram getUpdates dari format Markdown Link
+            url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/getUpdates"
             res = requests.get(url, params={"timeout": 30, "offset": offset}, timeout=35).json()
             for update in res.get("result", []):
                 offset = update["update_id"] + 1
@@ -204,7 +208,9 @@ def listen_to_carl():
                 if "callback_query" in update:
                     cq = update["callback_query"]
                     cb_data = cq.get("data", "")
-                    requests.post(f"[https://api.telegram.org/bot](https://api.telegram.org/bot){MAGNUS_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq["id"]})
+                    
+                    # FIX: Membersihkan URL answerCallbackQuery dari format Markdown Link
+                    requests.post(f"https://api.telegram.org/bot{MAGNUS_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq["id"]})
                     
                     if cb_data.startswith("rat_"):
                         rating = int(cb_data.split("_")[1])
