@@ -60,15 +60,34 @@ def generate_script_with_ai(title, channel, video_url):
             elif status == "REVISED":
                 memory_context += f"👉 [KRITIK TEXTUAL USER]: Pada skrip lalu, user memberikan koreksi spesifik: \"{mem['feedback']}\". Perbaiki kekurangan ini sekarang!\n\n"
 
-    # 2. PROMPT AGENT YANG DILENGKAPI OTAK PEMBOBOTAN
+    # 2. PROMPT AGENT YANG DILENGKAPI OTAK PEMBOBOTAN DAN ENGAGEMENT ENGINE
     prompt = f"""
     Kamu adalah Magnus, seorang AI Content Agent khusus TikTok ceruk Karir Korporat & Dunia Kerja Indonesia.
-    Kamu adalah agen cerdas yang berevolusi dengan mempelajari tingkat rating kecocokan gaya bahasa dari user.
-    
-    Tugas kamu: Buat skrip TikTok 1 menit (~130-150 kata) dengan formula PAS (Problem, Agitate, Solution).
-    Tone utama: Santai, blak-blakan anak kantor Jakarta (pake 'lo'/'gue'), relatable, tajam, tapi berbobot.
-    
-    Topik Konten Baru:
+    Kamu adalah pembuat konten TikTok yang handal, sinis, realistis, dan benci basa-basi.
+    Tugas kamu: Buat skrip TikTok durasi ~60 detik (130-150 kata) dengan gaya bicara santai, natural, mengalir, dan MEMICU ENGAGEMENT TINGGI.
+
+    =========================================
+    🚨 ATURAN BAHASA TUTUR (WAJIB DIPATUHI):
+    =========================================
+    1. JANGAN PERNAH gunakan kata-kata AI Klise ini: "Gawat!", "Bahaya!", "Tahukah kamu?", "Duh", "Yuk", "Nah", "Kalian".
+    2. JANGAN PERNAH membuat daftar transisi kaku seperti: "Pertama...", "Kedua...", "Ketiga...". 
+       Ganti dengan transisi kasual: "Mulai sekarang...", "Taktik paling aman itu...", "Satu lagi yang penting...", "Kuncinya ada di...".
+    3. Gunakan bahasa gaul/slang kantoran Jakarta yang organik: "red flag", "lindungi diri", "silent treatment", "nyari aman", "capek batin", "drama", "gimmick", "curhat", "bos".
+    4. Tulis skrip menggunakan tanda baca emosional seperti titik tiga (...) untuk jeda napas alami, atau HURUF KAPITAL untuk kata yang perlu ditekankan. Buat seakan-akan kamu sedang bicara langsung/curhat ke teman kerja.
+
+    =========================================
+    🔥 STRUKTUR SKRIP HIGH-ENGAGEMENT:
+    =========================================
+    - [HOOK (0-5s)]: Harus berupa pernyataan blunt, sindiran halus, atau situasi POV yang bikin orang berhenti scroll karena merasa disindir atau relate. Hindari kata seru dramatis.
+      * Contoh Bagus: "Punya bos yang hobinya ngegosipin timnya sendiri tuh... bener-bener definisi capek batin."
+    - [AGITATE (5-20s)]: Goreng masalahnya sampai terasa menyesakkan. Bikin penonton merasa "Gue banget!". Fokus pada emosi 'ketidakadilan di kantor'.
+    - [SOLUTION (20-50s)]: Berikan taktik bertahan hidup (survival tactics) yang praktis, cerdas, sedikit licik tapi realistis. Bukan saran teori HRD yang naif.
+    - [CTA (50-60s)]: JANGAN tanya "Menurut kalian gimana?". Pancing mereka untuk curhat colongan, berbagi drama, atau mengeluhkan bos mereka di kolom komentar.
+      * Contoh Bagus: "Bos lo ada yang setipe kayak gini juga gak? Atau lo punya taktik yang lebih sosiopat buat ngadepinnya? Spill drama lo di bawah, mari kita gibah sehat."
+
+    =========================================
+    INPUT DATA:
+    =========================================
     Judul Inspirasi: "{title}" | Channel: {channel} ({video_url})
     {memory_context}
     
@@ -87,7 +106,7 @@ def generate_script_with_ai(title, channel, video_url):
 
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     
-    # SYSTEM UPGRADE: Jaringan pengaman coba ulang dengan Exponential Backoff (Maksimal 5 Kali)
+    # Layer coba ulang otomatis dengan Exponential Backoff (Maksimal 5 Kali)
     backoff_delays = [1, 2, 4, 8, 16]
     for attempt in range(5):
         try:
@@ -98,7 +117,7 @@ def generate_script_with_ai(title, channel, video_url):
             return ai_text
         except Exception as e:
             if attempt == 4:
-                return f"⚠️ Gemini API Error setelah 5x coba ulang: {e}\n\n<i>(Sepertinya server Google sedang bermasalah di regional Anda. Silakan coba klik tombol generate kembali beberapa menit lagi, bos!)</i>"
+                return f"⚠️ Gemini API Error setelah 5x coba ulang: {e}\n\n<i>(Sepertinya server Google sedang sibuk. Silakan coba klik tombol generate kembali beberapa menit lagi, bos!)</i>"
             time.sleep(backoff_delays[attempt])
 
 def send_script_with_rating_buttons(text, title):
@@ -144,7 +163,6 @@ class MagnusHTTPHandler(BaseHTTPRequestHandler):
             channel = data.get("channel", "Anonim")
             video_url = data.get("video_url", "")
             
-            # Jalankan di thread terpisah agar respon HTTP cepat kembali
             threading.Thread(target=process_internal_trigger, args=(title, channel, video_url)).start()
             
             self.send_response(200)
@@ -226,3 +244,19 @@ def listen_to_carl():
 if __name__ == "__main__":
     threading.Thread(target=run_http_server, daemon=True).start()
     listen_to_carl()
+```
+`eof`
+
+---
+
+### 🧪 Cara Mengujinya (Dan Perbedaannya)
+
+Setelah lo commit kodenya di GitHub, tunggu 1 menit sampai Railway selesai melakukan redeploy otomatis. 
+
+Yuk, kita lakukan simulasi lagi menggunakan topik "Bos gosip" tadi untuk membandingkan perbedaannya:
+
+1. Masuk ke kamar **Magnus**, kirim pesan tiruan ini:
+   ```text
+   GENERATE_SCRIPT
+   TITLE:Ketika bos lo sendiri yang jadi biang kerok gosip di kantor
+   CHANNEL:Kreator Sukses
