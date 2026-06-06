@@ -40,9 +40,6 @@ def save_memory(data_to_save):
         json.dump(memory, f, indent=4)
 
 def generate_script_with_ai(title, channel, video_url):
-    # FIX: Membersihkan URL Gemini dari format Markdown Link pengganggu
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    
     # 1. BACA HISTORI + BOBOT RATING MASA LALU (EXPERIENCE LOOP)
     past_memory = load_memory()
     memory_context = ""
@@ -106,23 +103,30 @@ def generate_script_with_ai(title, channel, video_url):
     """
 
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    headers = {"Content-Type": "application/json"}
     
-    # Layer coba ulang otomatis dengan Exponential Backoff (Maksimal 5 Kali)
-    backoff_delays = [1, 2, 4, 8, 16]
-    for attempt in range(5):
-        try:
-            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
-            response.raise_for_status()
-            res_data = response.json()
-            ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
-            return ai_text
-        except Exception as e:
-            if attempt == 4:
-                return f"⚠️ Gemini API Error setelah 5x coba ulang: {e}\n\n<i>(Sepertinya server Google sedang sibuk. Silakan coba klik tombol generate kembali beberapa menit lagi, bos!)</i>"
+    # SYSTEM UPGRADE: Model Fallback Engine (Mencoba 2.5-flash, jika 503 otomatis mundur ke 1.5-flash)
+    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
+    backoff_delays = [1, 2, 4]
+    
+    for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        for attempt in range(len(backoff_delays)):
+            try:
+                response = requests.post(url, json=payload, headers=headers, timeout=30)
+                if response.status_code == 200:
+                    res_data = response.json()
+                    ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
+                    return ai_text
+                elif response.status_code == 503:
+                    print(f"⚠️ Model {model_name} mengembalikan status 503. Mencoba ulang...")
+            except Exception as e:
+                print(f"⚠️ Gagal mencoba model {model_name} pada percobaan ke-{attempt+1}: {e}")
             time.sleep(backoff_delays[attempt])
+            
+    return "⚠️ <b>Gemini API Error:</b> Seluruh server Google Gemini (2.5-flash & 1.5-flash) sedang sibuk atau mengalami gangguan sementara. Silakan tunggu beberapa saat dan coba klik generate kembali, bos!"
 
 def send_script_with_rating_buttons(text, title):
-    # FIX: Membersihkan URL Telegram dari format Markdown Link pengganggu
     url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True, "message_thread_id": MAGNUS_TOPIC_ID,
@@ -146,7 +150,6 @@ def send_script_with_rating_buttons(text, title):
     except: pass
 
 def send_plain_message(text):
-    # FIX: Membersihkan URL Telegram dari format Markdown Link pengganggu
     url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "message_thread_id": MAGNUS_TOPIC_ID}
     try: requests.post(url, json=payload, timeout=10)
@@ -180,8 +183,13 @@ def process_internal_trigger(title, channel, video_url):
     global CURRENT_AGENT_DATA
     send_plain_message(f"⚡ <b>Magnus AI Agent:</b> Menerima instruksi langsung dari Carl! Mulai memikirkan skrip untuk: <i>\"{title}\"</i>...")
     script = generate_script_with_ai(title, channel, video_url)
-    CURRENT_AGENT_DATA = {"title": title, "channel": channel, "video_url": video_url, "script": script}
-    send_script_with_rating_buttons(script, title)
+    
+    # SMART FILTER: Jika output berupa error teks, kirim sebagai pesan biasa tanpa tombol rating
+    if script.startswith("⚠️"):
+        send_plain_message(script)
+    else:
+        CURRENT_AGENT_DATA = {"title": title, "channel": channel, "video_url": video_url, "script": script}
+        send_script_with_rating_buttons(script, title)
 
 def run_http_server():
     port = int(os.environ.get("PORT", 8080))
@@ -199,7 +207,6 @@ def listen_to_carl():
     
     while True:
         try:
-            # FIX: Membersihkan URL Telegram getUpdates dari format Markdown Link
             url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/getUpdates"
             res = requests.get(url, params={"timeout": 30, "offset": offset}, timeout=35).json()
             for update in res.get("result", []):
@@ -209,7 +216,6 @@ def listen_to_carl():
                     cq = update["callback_query"]
                     cb_data = cq.get("data", "")
                     
-                    # FIX: Membersihkan URL answerCallbackQuery dari format Markdown Link
                     requests.post(f"https://api.telegram.org/bot{MAGNUS_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq["id"]})
                     
                     if cb_data.startswith("rat_"):
