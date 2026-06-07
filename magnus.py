@@ -19,7 +19,7 @@ CURRENT_AGENT_DATA = {}
 USER_STATE = {}
 
 def load_memory():
-    """Membaca ingatan masa lalu dari harddisk virtual"""
+    """Membaca ingatan masa lalu dari penyimpanan virtual"""
     if os.path.exists(MEMORY_FILE):
         try:
             with open(MEMORY_FILE, 'r') as f:
@@ -29,7 +29,7 @@ def load_memory():
     return []
 
 def save_memory(data_to_save):
-    """Menyimpan skrip + feedback rating secara permanen"""
+    """Menyimpan skrip dan feedback rating secara permanen"""
     os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
     memory = load_memory()
     memory.append(data_to_save)
@@ -105,18 +105,18 @@ def generate_script_with_ai(title, channel, video_url):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
     
-    # PERBAIKAN UTAMA: Menggunakan endpoint stabil "/v1/" menggantikan "/v1beta/"
+    # KUNCI UTAMA: Menggunakan endpoint "/v1beta/" yang mendukung penuh Gemini 1.5 Free Tier
     models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
     backoff_delays = [1, 2, 4]
     last_error_msg = ""
     
     for model_name in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         for attempt in range(len(backoff_delays)):
             try:
                 response = requests.post(url, json=payload, headers=headers, timeout=30)
                 
-                # DETEKSI CONFIG/CLIENT ERROR (400, 401, 403, 404, 429) SECARA INSTAN
+                # Deteksi error konfigurasi secara instan (400, 401, 403, 404, 429)
                 if response.status_code in [400, 401, 403, 404, 429]:
                     try:
                         err_json = response.json()
@@ -172,7 +172,7 @@ def send_plain_message(text):
     except: pass
 
 # ============================================================
-# LAYER KONEKSI HTTP SERVER (JALUR TOL INTERAL RAILWAY)
+# LAYER KONEKSI HTTP SERVER (JALUR TOL INTERNAL RAILWAY)
 # ============================================================
 class MagnusHTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
