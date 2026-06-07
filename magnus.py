@@ -105,7 +105,8 @@ def generate_script_with_ai(title, channel, video_url):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
     
-    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
+    # UPGRADE UTAMA: Gunakan model stabil publik (gemini-1.5-flash sebagai utama, gemini-1.5-pro sebagai cadangan)
+    models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
     backoff_delays = [1, 2, 4]
     last_error_msg = ""
     
@@ -115,19 +116,20 @@ def generate_script_with_ai(title, channel, video_url):
             try:
                 response = requests.post(url, json=payload, headers=headers, timeout=30)
                 
-                # JALUR DETEKSI EROR KLASIK (400 Bad Request / 403 Forbidden)
-                # Berguna agar error "Kunci API Salah" atau "Kuota Habis" langsung terdeteksi
-                if response.status_code in [400, 403]:
+                # DETEKSI BATASAN KUOTA & ERROR UTAMA (400, 403, 429)
+                if response.status_code in [400, 403, 429]:
                     try:
                         err_json = response.json()
-                        err_msg = err_json.get("error", {}).get("message", "API key not valid or expired.")
+                        err_msg = err_json.get("error", {}).get("message", "API key issues or rate limit exceeded.")
                     except:
                         err_msg = response.text
-                    return f"⚠️ <b>Google Gemini API Error ({response.status_code}):</b> {err_msg}\n\n<i>Bos, silakan periksa kembali GEMINI_API_KEY Anda di Railway. Pastikan kuncinya diawali dengan 'AIzaSy...' dan berstatus aktif!</i>"
+                    
+                    if response.status_code == 429:
+                        return "⚠️ <b>Google Gemini API Error (429 - Rate Limit Exceeded):</b> Batas kuota gratis akun Anda sedang habis sementara.\n\n<i>Google membatasi akun Free Tier maksimal 15 kali request per menit. Silakan tunggu 1-2 menit lalu coba kembali, bos!</i>"
+                    else:
+                        return f"⚠️ <b>Google Gemini API Error ({response.status_code}):</b> {err_msg}\n\n<i>Bos, silakan periksa kembali GEMINI_API_KEY Anda di Railway. Pastikan kuncinya diawali dengan 'AIzaSy...' dan berstatus aktif!</i>"
                 
-                # Raise error untuk kode status HTTP tidak sukses lainnya (seperti 503)
                 response.raise_for_status()
-                
                 res_data = response.json()
                 ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
                 return ai_text
