@@ -3,6 +3,7 @@ import requests
 import time
 import json
 import threading
+import re  # Diperlukan untuk mendeteksi judul dari teks reply Telegram
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # ============================================================
@@ -105,7 +106,7 @@ def generate_script_with_ai(title, channel, video_url):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
     
-    # UPGRADE MUTLAK: Menggunakan model generasi terbaru Gemini 2.5 yang didukung penuh oleh project 2026 lo!
+    # KUNCI UTAMA: Menggunakan endpoint "/v1beta/" yang mendukung penuh Gemini 2.5 Free Tier
     models_to_try = ["gemini-2.5-flash", "gemini-2.5-pro"]
     backoff_delays = [1, 2, 4]
     last_error_msg = ""
@@ -125,7 +126,7 @@ def generate_script_with_ai(title, channel, video_url):
                         err_msg = response.text
                     
                     if response.status_code == 429:
-                        return "⚠️ <b>Google Gemini API Error (429 - Rate Limit Exceeded):</b> Batas kuota gratis akun Anda sedang habis sementara.\n\n<i>Google membatasi akun Free Tier maksimal 15 kali request per menit. Silakan tunggu 1-2 menit lalu coba kembali, bos!</i>"
+                        return "⚠️ <b>Google Gemini API Error (429 - Rate Limit Exceeded):</b> Batas kuota gratis Anda sedang habis sementara.\n\n<i>Google membatasi akun Free Tier maksimal 15 kali request per menit. Silakan tunggu 1-2 menit lalu coba kembali, bos!</i>"
                     else:
                         return f"⚠️ <b>Google Gemini API Error ({response.status_code}):</b> {err_msg}\n\n" \
                                f"👉 <b>CARA FIX INSTAN:</b>\n" \
@@ -214,7 +215,7 @@ def run_http_server():
     server.serve_forever()
 
 # ============================================================
-# TELEGRAM POLLING LOOP
+# TELEGRAM POLLING LOOP (DILENGKAPI DETEKTOR REPLY AUTO-REVISE)
 # ============================================================
 def listen_to_carl():
     offset = None
@@ -262,9 +263,40 @@ def listen_to_carl():
                 if message_obj and "text" in message_obj:
                     msg_text = message_obj["text"].strip()
                     
-                    if USER_STATE.get(TELEGRAM_CHAT_ID) == "WAITING_REVISION":
-                        save_memory({"title": CURRENT_AGENT_DATA.get("title", "Konten"), "status": "REVISED", "script": CURRENT_AGENT_DATA.get("script", ""), "feedback": msg_text})
-                        send_plain_message(f"💡 <b>Memori Diupdate:</b> Evaluasi Anda dicatat: <i>\"{msg_text}\"</i>.")
+                    # DETEKSI SMART: Cek apakah user langsung melakukan reply manual ke pesan draf Magnus
+                    is_reply_to_magnus = False
+                    replied_text = ""
+                    reply_to = message_obj.get("reply_to_message")
+                    if reply_to and "text" in reply_to:
+                        replied_text = reply_to["text"]
+                        # Cek identitas bot Magnus di dalam pesan yang di-reply
+                        if "MAGNUS — AI Agent" in replied_text or "MAGNUS" in replied_text:
+                            is_reply_to_magnus = True
+                    
+                    # Eksekusi jika dalam mode standby ATAU jika user langsung me-reply draf Magnus secara spontan
+                    if USER_STATE.get(TELEGRAM_CHAT_ID) == "WAITING_REVISION" or is_reply_to_magnus:
+                        # Ekstrak judul asli dari draf skrip yang di-reply agar memori tetap sinkron walau reply skrip jadul
+                        extracted_title = "Konten"
+                        if is_reply_to_magnus:
+                            title_match = re.search(r"Inspirasi Konten:\s*(.*)", replied_text)
+                            if title_match:
+                                extracted_title = title_match.group(1).strip().split("\n")[0]
+                            else:
+                                extracted_title = CURRENT_AGENT_DATA.get("title", "Konten")
+                        else:
+                            extracted_title = CURRENT_AGENT_DATA.get("title", "Konten")
+                            
+                        # Dapatkan konten skrip yang dikritik
+                        saved_script = replied_text if is_reply_to_magnus else CURRENT_AGENT_DATA.get("script", "")
+                        
+                        save_memory({
+                            "title": extracted_title, 
+                            "status": "REVISED", 
+                            "script": saved_script, 
+                            "feedback": msg_text
+                        })
+                        
+                        send_plain_message(f"🧠 <b>Memori Diupdate via Reply:</b> Kritik Anda untuk skrip <i>\"{extracted_title}\"</i> dicatat: <i>\"{msg_text}\"</i>. Magnus akan mempelajari pola revisi ini pada draf berikutnya!")
                         USER_STATE[TELEGRAM_CHAT_ID] = None
                         
         except: time.sleep(5)
