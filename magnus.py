@@ -105,13 +105,13 @@ def generate_script_with_ai(title, channel, video_url):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
     
-    # Gunakan model resmi Google AI Studio stabil
+    # PERBAIKAN UTAMA: Menggunakan endpoint stabil "/v1/" menggantikan "/v1beta/"
     models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
     backoff_delays = [1, 2, 4]
     last_error_msg = ""
     
     for model_name in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         for attempt in range(len(backoff_delays)):
             try:
                 response = requests.post(url, json=payload, headers=headers, timeout=30)
@@ -127,7 +127,6 @@ def generate_script_with_ai(title, channel, video_url):
                     if response.status_code == 429:
                         return "⚠️ <b>Google Gemini API Error (429 - Rate Limit Exceeded):</b> Batas kuota gratis akun Anda sedang habis sementara.\n\n<i>Google membatasi akun Free Tier maksimal 15 kali request per menit. Silakan tunggu 1-2 menit lalu coba kembali, bos!</i>"
                     else:
-                        # Mengembalikan error murni Google yang berisi link aktivasi project yang benar!
                         return f"⚠️ <b>Google Gemini API Error ({response.status_code}):</b> {err_msg}\n\n" \
                                f"👉 <b>CARA FIX INSTAN:</b>\n" \
                                f"Silakan <u>klik link Google Cloud yang tertera di pesan error di atas</u> (jika ada), pastikan Anda masuk ke akun Google yang benar, lalu klik tombol <b>Enable/Aktifkan</b> pada halaman tersebut!"
