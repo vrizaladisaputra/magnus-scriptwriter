@@ -105,8 +105,8 @@ def generate_script_with_ai(title, channel, video_url):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
     
-    # KUNCI UTAMA: Menggunakan endpoint "/v1beta/" yang mendukung penuh Gemini 1.5 Free Tier
-    models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
+    # UPGRADE MUTLAK: Menggunakan model generasi terbaru Gemini 2.5 yang didukung penuh oleh project 2026 lo!
+    models_to_try = ["gemini-2.5-flash", "gemini-2.5-pro"]
     backoff_delays = [1, 2, 4]
     last_error_msg = ""
     
