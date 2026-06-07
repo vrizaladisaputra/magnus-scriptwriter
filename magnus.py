@@ -105,7 +105,7 @@ def generate_script_with_ai(title, channel, video_url):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
     
-    # UPGRADE UTAMA: Gunakan model stabil publik (gemini-1.5-flash sebagai utama, gemini-1.5-pro sebagai cadangan)
+    # Gunakan model resmi Google AI Studio stabil
     models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
     backoff_delays = [1, 2, 4]
     last_error_msg = ""
@@ -116,18 +116,21 @@ def generate_script_with_ai(title, channel, video_url):
             try:
                 response = requests.post(url, json=payload, headers=headers, timeout=30)
                 
-                # DETEKSI BATASAN KUOTA & ERROR UTAMA (400, 403, 429)
-                if response.status_code in [400, 403, 429]:
+                # DETEKSI CONFIG/CLIENT ERROR (400, 401, 403, 404, 429) SECARA INSTAN
+                if response.status_code in [400, 401, 403, 404, 429]:
                     try:
                         err_json = response.json()
-                        err_msg = err_json.get("error", {}).get("message", "API key issues or rate limit exceeded.")
+                        err_msg = err_json.get("error", {}).get("message", "Unknown API error.")
                     except:
                         err_msg = response.text
                     
                     if response.status_code == 429:
                         return "⚠️ <b>Google Gemini API Error (429 - Rate Limit Exceeded):</b> Batas kuota gratis akun Anda sedang habis sementara.\n\n<i>Google membatasi akun Free Tier maksimal 15 kali request per menit. Silakan tunggu 1-2 menit lalu coba kembali, bos!</i>"
                     else:
-                        return f"⚠️ <b>Google Gemini API Error ({response.status_code}):</b> {err_msg}\n\n<i>Bos, silakan periksa kembali GEMINI_API_KEY Anda di Railway. Pastikan kuncinya diawali dengan 'AIzaSy...' dan berstatus aktif!</i>"
+                        # Mengembalikan error murni Google yang berisi link aktivasi project yang benar!
+                        return f"⚠️ <b>Google Gemini API Error ({response.status_code}):</b> {err_msg}\n\n" \
+                               f"👉 <b>CARA FIX INSTAN:</b>\n" \
+                               f"Silakan <u>klik link Google Cloud yang tertera di pesan error di atas</u> (jika ada), pastikan Anda masuk ke akun Google yang benar, lalu klik tombol <b>Enable/Aktifkan</b> pada halaman tersebut!"
                 
                 response.raise_for_status()
                 res_data = response.json()
