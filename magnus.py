@@ -105,26 +105,38 @@ def generate_script_with_ai(title, channel, video_url):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
     
-    # SYSTEM UPGRADE: Model Fallback Engine (Mencoba 2.5-flash, jika 503 otomatis mundur ke 1.5-flash)
     models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
     backoff_delays = [1, 2, 4]
+    last_error_msg = ""
     
     for model_name in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         for attempt in range(len(backoff_delays)):
             try:
                 response = requests.post(url, json=payload, headers=headers, timeout=30)
-                if response.status_code == 200:
-                    res_data = response.json()
-                    ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
-                    return ai_text
-                elif response.status_code == 503:
-                    print(f"⚠️ Model {model_name} mengembalikan status 503. Mencoba ulang...")
+                
+                # JALUR DETEKSI EROR KLASIK (400 Bad Request / 403 Forbidden)
+                # Berguna agar error "Kunci API Salah" atau "Kuota Habis" langsung terdeteksi
+                if response.status_code in [400, 403]:
+                    try:
+                        err_json = response.json()
+                        err_msg = err_json.get("error", {}).get("message", "API key not valid or expired.")
+                    except:
+                        err_msg = response.text
+                    return f"⚠️ <b>Google Gemini API Error ({response.status_code}):</b> {err_msg}\n\n<i>Bos, silakan periksa kembali GEMINI_API_KEY Anda di Railway. Pastikan kuncinya diawali dengan 'AIzaSy...' dan berstatus aktif!</i>"
+                
+                # Raise error untuk kode status HTTP tidak sukses lainnya (seperti 503)
+                response.raise_for_status()
+                
+                res_data = response.json()
+                ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
+                return ai_text
             except Exception as e:
+                last_error_msg = str(e)
                 print(f"⚠️ Gagal mencoba model {model_name} pada percobaan ke-{attempt+1}: {e}")
             time.sleep(backoff_delays[attempt])
             
-    return "⚠️ <b>Gemini API Error:</b> Seluruh server Google Gemini (2.5-flash & 1.5-flash) sedang sibuk atau mengalami gangguan sementara. Silakan tunggu beberapa saat dan coba klik generate kembali, bos!"
+    return f"⚠️ <b>Gemini API Error:</b> Seluruh server Google Gemini sedang sibuk atau mengalami gangguan sementara.\n\nDetail error terakhir: <code>{last_error_msg}</code>\n\n<i>Silakan coba klik generate kembali beberapa saat lagi, bos!</i>"
 
 def send_script_with_rating_buttons(text, title):
     url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
