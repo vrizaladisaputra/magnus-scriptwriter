@@ -1,306 +1,335 @@
 import os
 import requests
+from datetime import datetime, timedelta
+import pytz
 import time
 import json
 import threading
-import re  # Diperlukan untuk mendeteksi judul dari teks reply Telegram
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import re  # Ditambahkan untuk deteksi pola kata bahasa asing
 
 # ============================================================
-# KONFIGURASI BOT MAGNUS + GEMINI AI
+# KONFIGURASI BOT CARL + GEMINI FILTER
 # ============================================================
-MAGNUS_TOKEN = os.environ.get("MAGNUS_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID") 
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") # Wajib ditambahkan di Railway Carl!
 
-MAGNUS_TOPIC_ID = 4
-MEMORY_FILE = "/data/memory.json"
+CARL_TOPIC_ID = 2  # ID Topik Carl di Grup Telegram
 
-CURRENT_AGENT_DATA = {}
-USER_STATE = {}
+# Keyword dengan volume pencarian raksasa & emosi tinggi di Indonesia (Viral Bait)
+# Namun akan disaring super ketat oleh Gemini agar hanya meloloskan 2 pilar Rizal.
+CAREER_KEYWORDS = [
+    "budak korporat", "politik kantor", "realita anak korporat",
+    "banting setir karir", "gaji SCBD", "tips nego gaji",
+    "pindah kerja naik gaji", "quarter life crisis karir", "curhat kerjaan",
+    "layoff startup", "wfa jakarta cafe", "product manager indonesia"
+]
 
-def load_memory():
-    """Membaca ingatan masa lalu dari penyimpanan virtual"""
-    if os.path.exists(MEMORY_FILE):
-        try:
-            with open(MEMORY_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            return []
-    return []
+VIDEO_CACHE = {}
 
-def save_memory(data_to_save):
-    """Menyimpan skrip dan feedback rating secara permanen"""
-    os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
-    memory = load_memory()
-    memory.append(data_to_save)
-    # Membatasi ingatan hingga 15 skrip emas terakhir agar AI fokus pada pola terbaru
-    if len(memory) > 15:
-        memory = memory[-15:]
-    with open(MEMORY_FILE, 'w') as f:
-        json.dump(memory, f, indent=4)
-
-def generate_script_with_ai(title, channel, video_url):
-    # 1. BACA HISTORI + BOBOT RATING MASA LALU (EXPERIENCE LOOP)
-    past_memory = load_memory()
-    memory_context = ""
-    if past_memory:
-        memory_context = "\n⚠️ [PENTING] PELAJARI RIWAYAT PENGALAMAN & EVALUASI GAYA BAHASA SEBELUMNYA DI BAWAH INI:\n"
-        for mem in past_memory:
-            status = mem.get("status")
-            script_content = mem.get("script", "")
-            
-            if status == "RATING_4":
-                memory_context += f"👉 [RATING 4/4 - PERFECT STYLE (TIRU TOTAL)]: User menilai skrip ini 100% SANGAT SEMPURNA mencerminkan dirinya. Pelajari pilihan katanya, flow, hook, gaya santainya, dan REPLIKASI gaya bahasa ini secara utuh:\n\"\"\"{script_content}\"\"\"\n\n"
-            elif status == "RATING_3":
-                memory_context += f"👉 [RATING 3/4 - GREAT STYLE (IKUTI SEBAGIAN BESAR)]: Skrip ini hampir sempurna dan mendekati gaya asli user. Gunakan tone, struktur kalimat, dan ritme dari skrip ini sebagai acuan utama:\n\"\"\"{script_content}\"\"\"\n\n"
-            elif status == "RATING_2":
-                memory_context += f"👉 [RATING 2/4 - GOOD BUT NOT ME (CUKUP CATAT SEDIKIT)]: Skrip ini isinya bagus tapi gaya bahasanya kurang mencerminkan kepribadian user. Ambil poin solusinya saja, tetapi rombak total gayanya agar tidak terlalu kaku/baku seperti skrip ini:\n\"\"\"{script_content}\"\"\"\n\n"
-            elif status == "REVISED":
-                memory_context += f"👉 [KRITIK TEXTUAL USER]: Pada skrip lalu, user memberikan koreksi spesifik: \"{mem['feedback']}\". Perbaiki kekurangan ini sekarang!\n\n"
-
-    # 2. PROMPT AGENT YANG DILENGKAPI OTAK PEMBOBOTAN DAN ENGAGEMENT ENGINE
-    prompt = f"""
-    Kamu adalah Magnus, seorang AI Content Agent khusus TikTok ceruk Karir Korporat & Dunia Kerja Indonesia.
-    Kamu adalah pembuat konten TikTok yang handal, sinis, realistis, dan benci basa-basi.
-    Tugas kamu: Buat skrip TikTok durasi ~60 detik (130-150 kata) dengan gaya bicara santai, natural, mengalir, dan MEMICU ENGAGEMENT TINGGI.
-
-    =========================================
-    🚨 ATURAN BAHASA TUTUR (WAJIB DIPATUHI):
-    =========================================
-    1. JANGAN PERNAH gunakan kata-kata AI Klise ini: "Gawat!", "Bahaya!", "Tahukah kamu?", "Duh", "Yuk", "Nah", "Kalian".
-    2. JANGAN PERNAH membuat daftar transisi kaku seperti: "Pertama...", "Kedua...", "Ketiga...". 
-       Ganti dengan transisi kasual: "Mulai sekarang...", "Taktik paling aman itu...", "Satu lagi yang penting...", "Kuncinya ada di...".
-    3. Gunakan bahasa gaul/slang kantoran Jakarta yang organik: "red flag", "lindungi diri", "silent treatment", "nyari aman", "capek batin", "drama", "gimmick", "curhat", "bos".
-    4. Tulis skrip menggunakan tanda baca emosional seperti titik tiga (...) untuk jeda napas alami, atau HURUF KAPITAL untuk kata yang perlu ditekankan. Buat seakan-akan kamu sedang bicara langsung/curhat ke teman kerja.
-
-    =========================================
-    🔥 STRUKTUR SKRIP HIGH-ENGAGEMENT:
-    =========================================
-    - [HOOK (0-5s)]: Harus berupa pernyataan blunt, sindiran halus, atau situasi POV yang bikin orang berhenti scroll karena merasa disindir atau relate. Hindari kata seru dramatis.
-      * Contoh Bagus: "Punya bos yang hobinya ngegosipin timnya sendiri tuh... bener-bener definisi capek batin."
-    - [AGITATE (5-20s)]: Goreng masalahnya sampai terasa menyesakkan. Bikin penonton merasa "Gue banget!". Fokus pada emosi 'ketidakadilan di kantor'.
-    - [SOLUTION (20-50s)]: Berikan taktik bertahan hidup (survival tactics) yang praktis, cerdas, sedikit licik tapi realistis. Bukan saran teori HRD yang naif.
-    - [CTA (50-60s)]: JANGAN tanya "Menurut kalian gimana?". Pancing mereka untuk curhat colongan, berbagi drama, atau mengeluhkan bos mereka di kolom komentar.
-      * Contoh Bagus: "Bos lo ada yang setipe kayak gini juga gak? Atau lo punya taktik yang lebih sosiopat buat ngadepinnya? Spill drama lo di bawah, mari kita gibah sehat."
-
-    =========================================
-    INPUT DATA:
-    =========================================
-    Judul Inspirasi: "{title}" | Channel: {channel} ({video_url})
-    {memory_context}
-    
-    Format Output Harus Mengikuti Struktur Ini:
-    🧙‍♂️ <b>MAGNUS — AI Agent (Adaptive Memory Mode)</b>
-    <i>Inspirasi Konten: {title}</i>
-    ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═
-    
-    <b>[0-5s] HOOK:</b> "[Tulis kalimat hook]"
-    <b>[5-20s] AGITATE:</b> "[Goreng masalahnya]"
-    <b>[20-50s] SOLUTION:</b> "[Kasih solusi taktis korporat]"
-    <b>[50-60s] CTA:</b> "[Ajakan interaksi debat/curhat di komen]"
-    ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═
-    💡 #tipskarir #korporat #duniakerja
+def is_indonesian_or_english_only(title, description):
     """
-
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    headers = {"Content-Type": "application/json"}
+    Python-Level Firewall untuk menyaring dan membuang konten asing (seperti Hindi, Hinglish, dll)
+    secara instan sebelum memanggil Gemini API. Hemat token & 100% akurat.
+    """
+    text = f"{title} {description}".lower()
     
-    # KUNCI UTAMA: Menggunakan endpoint "/v1beta/" yang mendukung penuh Gemini 2.5 Free Tier
-    models_to_try = ["gemini-2.5-flash", "gemini-2.5-pro"]
-    backoff_delays = [1, 2, 4]
-    last_error_msg = ""
-    
-    for model_name in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-        for attempt in range(len(backoff_delays)):
-            try:
-                response = requests.post(url, json=payload, headers=headers, timeout=30)
-                
-                # Deteksi error konfigurasi secara instan (400, 401, 403, 404, 429)
-                if response.status_code in [400, 401, 403, 404, 429]:
-                    try:
-                        err_json = response.json()
-                        err_msg = err_json.get("error", {}).get("message", "Unknown API error.")
-                    except:
-                        err_msg = response.text
-                    
-                    if response.status_code == 429:
-                        return "⚠️ <b>Google Gemini API Error (429 - Rate Limit Exceeded):</b> Batas kuota gratis Anda sedang habis sementara.\n\n<i>Google membatasi akun Free Tier maksimal 15 kali request per menit. Silakan tunggu 1-2 menit lalu coba kembali, bos!</i>"
-                    else:
-                        return f"⚠️ <b>Google Gemini API Error ({response.status_code}):</b> {err_msg}\n\n" \
-                               f"👉 <b>CARA FIX INSTAN:</b>\n" \
-                               f"Silakan <u>klik link Google Cloud yang tertera di pesan error di atas</u> (jika ada), pastikan Anda masuk ke akun Google yang benar, lalu klik tombol <b>Enable/Aktifkan</b> pada halaman tersebut!"
-                
-                response.raise_for_status()
-                res_data = response.json()
-                ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
-                return ai_text
-            except Exception as e:
-                last_error_msg = str(e)
-                print(f"⚠️ Gagal mencoba model {model_name} pada percobaan ke-{attempt+1}: {e}")
-            time.sleep(backoff_delays[attempt])
+    # 1. Cek Karakter Devnagari (Aksara India): Range Unicode \u0900 - \u097F
+    for char in text:
+        if '\u0900' <= char <= '\u097f':
+            return False
             
-    return f"⚠️ <b>Gemini API Error:</b> Seluruh server Google Gemini sedang sibuk atau mengalami gangguan sementara.\n\nDetail error terakhir: <code>{last_error_msg}</code>\n\n<i>Silakan coba klik generate kembali beberapa saat lagi, bos!</i>"
+    # 2. Cek Kata-kata Khas Romanized Hindi (Hinglish) yang sering lolos deteksi biasa
+    hinglish_stopwords = {
+        "aur", "ka", "ki", "ke", "hai", "ko", "se", "bhi", "ho", "kar", 
+        "aapne", "kabhi", "socha", "sach", "asli", "naam", "yaar", "hota", 
+        "hoga", "kya", "meri", "mera", "tum", "aap", "gaya", "hi", "mein",
+        "ek", "dusre", "khilaf", "aapko"
+    }
+    
+    # Memisahkan kata dengan regex untuk menghindari kecocokan parsial
+    words = set(re.findall(r'\b\w+\b', text))
+    
+    # Jika ada kata Hinglish yang terdeteksi, tolak video
+    if words.intersection(hinglish_stopwords):
+        return False
+        
+    return True
 
-def send_script_with_rating_buttons(text, title):
-    url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
+def evaluate_videos_batch_with_gemini(video_list):
+    """
+    Menggunakan Gemini AI untuk menyaring daftar video secara massal (batch).
+    Mengurangi puluhan API call menjadi hanya 1-2 call saja! Bebas error 429.
+    """
+    if not GEMINI_API_KEY:
+        return {"match_found": False, "error": "api_key_missing"}
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    # Format list video agar rapi dibaca AI
+    formatted_list = []
+    for idx, vid in enumerate(video_list):
+        formatted_list.append(f"""
+--- VIDEO KANDIDAT #{idx+1} ---
+ID: {vid['id']}
+Title: {vid['title']}
+Channel: {vid['channel']}
+Description: {vid['description']}
+""")
+    
+    videos_text = "\n".join(formatted_list)
+    
+    prompt = f"""
+    Kamu bertindak sebagai Content Curator & Strategy Filter kelas dunia untuk personal branding TikTok Rizal / Ical (27 tahun).
+    
+    BERIKUT ADALAH PROFIL DAN BACKGROUND RIZAL:
+    - Pendidikan: SBM ITB (Manajemen Bisnis).
+    - Karir Sekarang: Product Manager (PM) di Truvisor.io, memegang produk cybersecurity & network visibility (Vectra AI & Keysight Technologies). Gaji saat ini 17jt/bulan.
+    - Cara Kerja: WFH/WFA mobile, jarang ke kantor, banyakan nyetir/pindah tempat buat ketemu customer & partner B2B di luar.
+    - Masa Lalu Karir: Pernah jadi Relationship Manager di Shopee, Account Manager Lifestyle di TikTok, dan Tech Sales di Soltius. Sukses melakukan 'Tech Pivot' dari non-tech/sales ke cybersecurity yang sangat teknis tanpa background coding.
+    
+    TUGAS KAMU:
+    Evaluasi daftar video kandidat berikut dan tentukan apakah ada yang cocok untuk dijadikan bahan konten TikTok Rizal:
+    {videos_text}
+    
+    🚨 ATURAN EVALUASI & KURASI PILAR:
+    1. Pilih MAKSIMAL SATU (1) video TERBAIK yang paling cocok dengan salah satu dari 2 pilar Rizal:
+       - Pilar 1: "The Tech Pivot" (Karir & Pindah Jalur ke IT/Cybersecurity)
+       - Pilar 2: "The Mobile PM Lifestyle & Corporate Hacks" (Day in My Life & Soft Skills)
+    2. Jika tidak ada satu pun video yang memenuhi kriteria pilar Rizal, set "match_found" menjadi false.
+
+    Kembalikan respon harus dalam format JSON yang valid seperti contoh di bawah (JANGAN beri komentar atau penjelasan apa pun di luar JSON):
+    {{
+        "match_found": true,
+        "selected_video_id": "Masukkan_ID_Video_Yang_Kamu_Pilih_Di_Sini",
+        "pilar": "Pilar 1: The Tech Pivot" atau "Pilar 2: The Mobile PM Lifestyle & Corporate Hacks",
+        "reason": "Alasan singkat kenapa video ini lolos kurasi pilar kamu",
+        "twist": "Instruksi spesifik cara nge-twist konten ini agar masuk ke sudut pandang/pengalaman hidup Rizal (SBM ITB/Ex-TikTok-Shopee/PM Cybersecurity gaji 17jt)",
+        "hooks": [
+            "Hook alternatif 1 (gaya The Pragmatic Older Brother: santai, blak-blakan, realistis, berbobot)",
+            "Hook alternatif 2"
+        ]
+    }}
+    
+    Jika tidak ada satupun yang cocok:
+    {{
+        "match_found": false
+    }}
+    """
+    
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True, "message_thread_id": MAGNUS_TOPIC_ID,
-        "reply_markup": {
-            "inline_keyboard": [
-                [
-                    {"text": "1️⃣ Acceptable", "callback_data": f"rat_1_{title[:20]}"},
-                    {"text": "2️⃣ Good (Not Me)", "callback_data": f"rat_2_{title[:20]}"}
-                ],
-                [
-                    {"text": "3️⃣ Great (Almost Me)", "callback_data": f"rat_3_{title[:20]}"},
-                    {"text": "4️⃣ Perfect (It's Me)", "callback_data": f"rat_4_{title[:20]}"}
-                ],
-                [
-                    {"text": "❌ Revise / Kritik Manual", "callback_data": f"rev_{title[:20]}"}
-                ]
-            ]
-        }
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"responseMimeType": "application/json"}
+    }
+    
+    try:
+        response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=25)
+        response.raise_for_status()
+        res_data = response.json()
+        result_text = res_data['candidates'][0]['content']['parts'][0]['text']
+        return json.loads(result_text)
+    except Exception as e:
+        print(f"Error pada penyaringan Batch AI Carl: {e}")
+        return {"match_found": False}
+
+def search_youtube_videos(keyword):
+    published_after = (datetime.now(pytz.utc) - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    url = "https://www.googleapis.com/youtube/v3/search"
+    
+    params = {
+        "part": "snippet", 
+        "q": keyword, 
+        "type": "video",
+        "publishedAfter": published_after, 
+        "maxResults": 3, 
+        "order": "viewCount",
+        "relevanceLanguage": "id", 
+        "regionCode": "ID",
+        "key": YOUTUBE_API_KEY,
+    }
+    try: return requests.get(url, params=params, timeout=10).json().get("items", [])
+    except: return []
+
+def get_video_stats(video_id):
+    url = "https://www.googleapis.com/youtube/v3/videos"
+    params = {"part": "statistics,snippet", "id": video_id, "key": YOUTUBE_API_KEY}
+    try: return requests.get(url, params=params, timeout=10).json().get("items", [{}])[0]
+    except: return {}
+
+def send_telegram(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML", "message_thread_id": CARL_TOPIC_ID}
+    try: requests.post(url, json=payload, timeout=10)
+    except: pass
+
+def send_alert_with_button(message, callback_data):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML", "message_thread_id": CARL_TOPIC_ID,
+        "reply_markup": {"inline_keyboard": [[{"text": "🎬 Generate Script", "callback_data": callback_data}]]}
     }
     try: requests.post(url, json=payload, timeout=10)
     except: pass
 
-def send_plain_message(text):
-    url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "message_thread_id": MAGNUS_TOPIC_ID}
-    try: requests.post(url, json=payload, timeout=10)
-    except: pass
+def forward_to_magnus(title, channel, video_url, twist_strategy):
+    enriched_title = f"{title} (💡 STRATEGI TWIST ICAL: {twist_strategy})"
+    
+    magnus_internal_url = "http://magnus-scriptwriter:8080/generate"
+    payload = {
+        "title": enriched_title,
+        "channel": channel,
+        "video_url": video_url
+    }
+    try:
+        response = requests.post(magnus_internal_url, json=payload, timeout=15)
+        if response.status_code == 200:
+            return True
+    except Exception as e:
+        print(f"Gagal kirim via jalur internal: {e}")
+    return False
 
-# ============================================================
-# LAYER KONEKSI HTTP SERVER (JALUR TOL INTERNAL RAILWAY)
-# ============================================================
-class MagnusHTTPHandler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        if self.path == "/generate":
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode('utf-8'))
+def run_monitor():
+    send_telegram("⚡ <b>Carl:</b> Mengumpulkan video kandidat potensial dari 12 kata kunci harian...")
+    candidates = []
+    seen_ids = set()
+    
+    for kw in CAREER_KEYWORDS:
+        videos = search_youtube_videos(kw)
+        for v in videos:
+            vid_id = v.get("id", {}).get("videoId")
+            if not vid_id or vid_id in seen_ids: continue
+            seen_ids.add(vid_id)
             
-            title = data.get("title", "Konten Viral")
-            channel = data.get("channel", "Anonim")
-            video_url = data.get("video_url", "")
+            detail = get_video_stats(vid_id)
+            stats = detail.get("statistics", {})
+            snippet = detail.get("snippet", {})
             
-            threading.Thread(target=process_internal_trigger, args=(title, channel, video_url)).start()
+            if int(stats.get("commentCount", 0)) >= 1:
+                title = snippet.get("title", "N/A")
+                desc = snippet.get("description", "")
+                channel = snippet.get("channelTitle", "N/A")
+                v_url = f"https://www.youtube.com/watch?v={vid_id}"
+                
+                # PYTHON FIREWALL CHECK (Instan & Tanpa Makan Token!)
+                if is_indonesian_or_english_only(title, desc):
+                    candidates.append({
+                        "id": vid_id,
+                        "title": title,
+                        "description": desc,
+                        "channel": channel,
+                        "url": v_url
+                    })
+        time.sleep(0.5) # Jeda aman rate limit YouTube Search API
+                    
+    if not candidates:
+        send_telegram("🌅 <b>Carl Laporan:</b> Pemindaian selesai. Tidak ada video kandidat yang memenuhi kriteria awal bahasa & engagement.")
+        return
+
+    send_telegram(f"🧠 <b>Carl:</b> Menemukan {len(candidates)} kandidat awal. Memilah video terbaik menggunakan filter AI secara batch...")
+    
+    # Ambil maksimal 8 kandidat teratas untuk dikurasi sekaligus dalam 1 API call
+    batch_candidates = candidates[:8]
+    
+    ai_evaluation = evaluate_videos_batch_with_gemini(batch_candidates)
+    
+    if ai_evaluation.get("error") == "api_key_missing":
+        send_telegram("⚠️ <b>Sistem Carl Error:</b> Variabel <code>GEMINI_API_KEY</code> belum dipasang di Railway Carl!")
+        return
+        
+    if ai_evaluation.get("match_found") is True:
+        selected_id = ai_evaluation.get("selected_video_id")
+        
+        # Temukan data objek kandidat asli dari daftar
+        selected_video = next((c for c in batch_candidates if c["id"] == selected_id), None)
+        
+        if selected_video:
+            pilar = ai_evaluation.get("pilar", "Pilar Konten")
+            reason = ai_evaluation.get("reason", "")
+            twist = ai_evaluation.get("twist", "")
+            hooks_list = ai_evaluation.get("hooks", [])
             
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({"status": "received"}).encode('utf-8'))
+            hooks_text = ""
+            for hk in hooks_list:
+                hooks_text += f"• <i>\"{hk}\"</i>\n"
+            
+            msg = f"🚨 <b>CARL — PILAR MATCH DETECTED!</b>\n\n" \
+                  f"🎬 <b>{selected_video['title']}</b>\n" \
+                  f"👤 Channel: {selected_video['channel']}\n" \
+                  f"🎯 <b>{pilar}</b>\n\n" \
+                  f"📌 <b>Kenapa Cocok:</b>\n{reason}\n\n" \
+                  f"🔀 <b>Twist Strategy (Untuk Ical):</b>\n{twist}\n\n" \
+                  f"🎙 <b>Pragmatic Hooks:</b>\n{hooks_text}\n" \
+                  f"🔗 {selected_video['url']}"
+            
+            callback_data = f"gen_{selected_id}"
+            
+            VIDEO_CACHE[callback_data] = {
+                "title": selected_video['title'], 
+                "channel": selected_video['channel'], 
+                "video_url": selected_video['url'],
+                "twist": twist
+            }
+            
+            send_alert_with_button(msg, callback_data)
         else:
-            self.send_response(404)
-            self.end_headers()
-
-def process_internal_trigger(title, channel, video_url):
-    global CURRENT_AGENT_DATA
-    send_plain_message(f"⚡ <b>Magnus AI Agent:</b> Menerima instruksi langsung dari Carl! Mulai memikirkan skrip untuk: <i>\"{title}\"</i>...")
-    script = generate_script_with_ai(title, channel, video_url)
-    
-    # SMART FILTER: Jika output berupa error teks, kirim sebagai pesan biasa tanpa tombol rating
-    if script.startswith("⚠️"):
-        send_plain_message(script)
+            send_telegram("🌅 <b>Carl Laporan:</b> AI memilih kecocokan tetapi ID video tidak terdaftar dalam kandidat.")
     else:
-        CURRENT_AGENT_DATA = {"title": title, "channel": channel, "video_url": video_url, "script": script}
-        send_script_with_rating_buttons(script, title)
+        send_telegram("🌅 <b>Carl Laporan:</b> Pemindaian selesai. Tidak ada video harian luar yang lolos filter ketat pilar Rizal.")
 
-def run_http_server():
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(('0.0.0.0', port), MagnusHTTPHandler)
-    print(f"🖥️ Magnus HTTP Server berjalan di port {port}...")
-    server.serve_forever()
-
-# ============================================================
-# TELEGRAM POLLING LOOP (DILENGKAPI DETEKTOR REPLY AUTO-REVISE)
-# ============================================================
-def listen_to_carl():
+def poll_carl():
     offset = None
-    global CURRENT_AGENT_DATA, USER_STATE
-    print("🧙‍♂️ Magnus AI Agent standby menangkap klik tombol rating Anda...")
-    
     while True:
         try:
-            url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/getUpdates"
-            res = requests.get(url, params={"timeout": 30, "offset": offset}, timeout=35).json()
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+            params = {"timeout": 30, "offset": offset}
+            res = requests.get(url, params=params, timeout=35).json()
             for update in res.get("result", []):
                 offset = update["update_id"] + 1
-                
                 if "callback_query" in update:
                     cq = update["callback_query"]
                     cb_data = cq.get("data", "")
-                    
-                    requests.post(f"https://api.telegram.org/bot{MAGNUS_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq["id"]})
-                    
-                    if cb_data.startswith("rat_"):
-                        rating = int(cb_data.split("_")[1])
-                        labels = {
-                            1: "1/4 - Acceptable (Abaikan dari Memori)",
-                            2: "2/4 - Good (Dicatat Sedikit)",
-                            3: "3/4 - Great (Dicatat Sebagian Besar)",
-                            4: "4/4 - Perfect (Standar Emas - Replikasi Total!)"
-                        }
-                        
-                        if rating == 1:
-                            send_plain_message("👌 <b>Noted:</b> Skrip dinilai <b>Acceptable</b>. Tidak disimpan ke memori.")
+                    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq["id"], "text": "Menghubungi Magnus..."})
+                    if cb_data in VIDEO_CACHE:
+                        v_info = VIDEO_CACHE[cb_data]
+                        if forward_to_magnus(v_info["title"], v_info["channel"], v_info["video_url"], v_info["twist"]):
+                            send_telegram(f"✅ Sukses! Strategi twist & data video dikirim ke Magnus.")
                         else:
-                            save_memory({
-                                "title": CURRENT_AGENT_DATA.get("title", "Konten"),
-                                "status": f"RATING_{rating}",
-                                "script": CURRENT_AGENT_DATA.get("script", ""),
-                                "feedback": labels[rating]
-                            })
-                            send_plain_message(f"🧠 <b>Memori Diupdate:</b> Magnus mempelajari gaya skrip ini dengan bobot <b>Rating {rating}/4</b>.")
-                    
-                    elif cb_data.startswith("rev_"):
-                        USER_STATE[TELEGRAM_CHAT_ID] = "WAITING_REVISION"
-                        send_plain_message("✍️ <b>Kritik Manual:</b> Bagian mana yang kurang oke, bos? Ketik koreksinya langsung di sini...")
-                
-                message_obj = update.get("message") or update.get("edited_message")
-                if message_obj and "text" in message_obj:
-                    msg_text = message_obj["text"].strip()
-                    
-                    # DETEKSI SMART: Cek apakah user langsung melakukan reply manual ke pesan draf Magnus
-                    is_reply_to_magnus = False
-                    replied_text = ""
-                    reply_to = message_obj.get("reply_to_message")
-                    if reply_to and "text" in reply_to:
-                        replied_text = reply_to["text"]
-                        # Cek identitas bot Magnus di dalam pesan yang di-reply
-                        if "MAGNUS — AI Agent" in replied_text or "MAGNUS" in replied_text:
-                            is_reply_to_magnus = True
-                    
-                    # Eksekusi jika dalam mode standby ATAU jika user langsung me-reply draf Magnus secara spontan
-                    if USER_STATE.get(TELEGRAM_CHAT_ID) == "WAITING_REVISION" or is_reply_to_magnus:
-                        # Ekstrak judul asli dari draf skrip yang di-reply agar memori tetap sinkron walau reply skrip jadul
-                        extracted_title = "Konten"
-                        if is_reply_to_magnus:
-                            title_match = re.search(r"Inspirasi Konten:\s*(.*)", replied_text)
-                            if title_match:
-                                extracted_title = title_match.group(1).strip().split("\n")[0]
-                            else:
-                                extracted_title = CURRENT_AGENT_DATA.get("title", "Konten")
-                        else:
-                            extracted_title = CURRENT_AGENT_DATA.get("title", "Konten")
-                            
-                        # Dapatkan konten skrip yang dikritik
-                        saved_script = replied_text if is_reply_to_magnus else CURRENT_AGENT_DATA.get("script", "")
-                        
-                        save_memory({
-                            "title": extracted_title, 
-                            "status": "REVISED", 
-                            "script": saved_script, 
-                            "feedback": msg_text
-                        })
-                        
-                        send_plain_message(f"🧠 <b>Memori Diupdate via Reply:</b> Kritik Anda untuk skrip <i>\"{extracted_title}\"</i> dicatat: <i>\"{msg_text}\"</i>. Magnus akan mempelajari pola revisi ini pada draf berikutnya!")
-                        USER_STATE[TELEGRAM_CHAT_ID] = None
-                        
+                            send_telegram(f"⚠️ Gagal mengirim data lewat jalur internal.")
+                elif "message" in update and "text" in update["message"]:
+                    if update["message"]["text"] == "/run":
+                        threading.Thread(target=run_monitor).start()
         except: time.sleep(5)
 
+# ============================================================
+# PENJADWAL OTOMATIS (RUNNING AT 08:00 & 20:00 WIB JAKARTA TIME)
+# ============================================================
+def scheduler_loop():
+    """Mengecek waktu setiap menit dan mentrigger Carl otomatis pada jam target"""
+    jakarta_tz = pytz.timezone('Asia/Jakarta')
+    print("🕒 Penjadwal otomatis Carl diaktifkan untuk jam 08:00 dan 20:00 WIB...")
+    
+    while True:
+        try:
+            now = datetime.now(jakarta_tz)
+            if now.minute == 0 and (now.hour == 8 or now.hour == 20):
+                print(f"⏰ [Scheduler] Memulai screening otomatis terjadwal pada jam {now.strftime('%H:%M WIB')}")
+                threading.Thread(target=run_monitor).start()
+                time.sleep(65)
+        except Exception as e:
+            print(f"⚠️ Error di sistem penjadwal: {e}")
+        time.sleep(30) # Cek kembali setiap 30 detik
+
 if __name__ == "__main__":
-    threading.Thread(target=run_http_server, daemon=True).start()
-    listen_to_carl()
+    # 1. Jalankan polling Telegram Carl
+    threading.Thread(target=poll_carl, daemon=True).start()
+    
+    # 2. Jalankan thread penjadwal otomatis jam 8 pagi dan malam
+    threading.Thread(target=scheduler_loop, daemon=True).start()
+    
+    # 3. Jalankan sekali pas startup biar Rizal tahu Carl-nya aktif mendeteksi
+    run_monitor()
+    
+    # Jaga agar program utama tetap hidup
+    while True: 
+        time.sleep(3600)
