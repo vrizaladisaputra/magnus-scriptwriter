@@ -3,7 +3,7 @@ import requests
 import time
 import json
 import threading
-import re  # Diperlukan untuk mengesan tajuk daripada teks balasan Telegram
+import re  # Diperlukan untuk mendeteksi judul dari teks reply Telegram
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # ============================================================
@@ -20,7 +20,7 @@ CURRENT_AGENT_DATA = {}
 USER_STATE = {}
 
 def load_memory():
-    """Membaca memori lepas daripada storan maya"""
+    """Membaca ingatan masa lalu dari penyimpanan virtual"""
     if os.path.exists(MEMORY_FILE):
         try:
             with open(MEMORY_FILE, 'r') as f:
@@ -30,18 +30,18 @@ def load_memory():
     return []
 
 def save_memory(data_to_save):
-    """Menyimpan skrip dan penilaian maklum balas secara kekal"""
+    """Menyimpan skrip dan feedback rating secara permanen"""
     os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
     memory = load_memory()
     memory.append(data_to_save)
-    # Menghadkan memori kepada 15 skrip emas terakhir agar AI fokus pada corak terbaru
+    # Membatasi ingatan hingga 15 skrip emas terakhir agar AI fokus pada pola terbaru
     if len(memory) > 15:
         memory = memory[-15:]
     with open(MEMORY_FILE, 'w') as f:
         json.dump(memory, f, indent=4)
 
 def generate_script_with_ai(title, channel, video_url):
-    # 1. BACA SEJARAH + BOBOT PENILAIAN LEPAS (EXPERIENCE LOOP)
+    # 1. BACA HISTORI + BOBOT RATING MASA LALU (EXPERIENCE LOOP)
     past_memory = load_memory()
     memory_context = ""
     if past_memory:
@@ -59,7 +59,7 @@ def generate_script_with_ai(title, channel, video_url):
             elif status == "REVISED":
                 memory_context += f"👉 [KRITIK TEXTUAL USER]: Pada skrip lalu, user memberikan koreksi spesifik: \"{mem['feedback']}\". Perbaiki kekurangan ini sekarang!\n\n"
 
-    # 2. PROMPT AGENT YANG DILENGKAPI MINDA PEMBOBOTAN DAN ENJIN PENGLIBATAN
+    # 2. PROMPT AGENT YANG DILENGKAPI OTAK PEMBOBOTAN DAN ENGAGEMENT ENGINE
     prompt = f"""
     Kamu adalah Magnus, seorang AI Content Agent khusus TikTok ceruk Karir Korporat & Dunia Kerja Indonesia.
     Kamu adalah pembuat konten TikTok yang handal, sinis, realistis, dan benci basa-basi.
@@ -68,14 +68,15 @@ def generate_script_with_ai(title, channel, video_url):
     ===================================================
     🚨 ATURAN PRIVASI & RELATABILITAS MUTLAK (WAJIB):
     ===================================================
-    1. JANGAN PERNAH menyebutkan atau menuliskan nama asli "Rizal", "Ical", almamater "SBM ITB", riwayat brand perusahaan ("Shopee", "TikTok", "Soltius", "Truvisor"), nominal gaji ("17 juta", "17jt"), atau jabatan spesifik "Product Manager Cybersecurity" di dalam dialog naskah TikTok.
-    2. Jika input Carl atau "STRATEGI TWIST ICAL" mengandung data-data pribadi di atas, terjemahkan data tersebut menjadi ANALOGI UMUM, TIPS TAKTIS PROFESIONAL, atau CONTOH KASUS ANONIM yang relate untuk seluruh pekerja kantoran di Indonesia.
+    1. JANGAN PERNAH menyebutkan atau menuliskan nama asli "Rizal", "Ical", almamater "SBM ITB", riwayat brand perusahaan ("Shopee", "TikTok", "Soltius", "Truvisor"), nominal gaji ("17 juta", "17jt"), atau jabatan spesifik "Product Manager" di dalam dialog naskah TikTok.
+    2. JANGAN PERNAH menceritakan hal teknis pembuat aplikasi (seperti: coding, bugs software, UI/UX, scrum, Jira, sprint backlog). Peran kamu adalah PM bisnis komersial/distribusi.
+    3. Jika input Carl atau "STRATEGI TWIST ICAL" mengandung data-data pribadi di atas, terjemahkan data tersebut menjadi ANALOGI UMUM, TIPS TAKTIS PROFESIONAL, atau CONTOH KASUS ANONIM yang relate untuk seluruh pekerja kantoran di Indonesia.
        * Contoh Konversi:
          - SBM ITB -> Ganti dengan istilah "anak bisnis", "gelar mentereng", atau "teori akademis kampus".
-         - PM Cybersecurity / Tech Sales -> Ganti dengan "pindah jalur ke industri basah", "pindah ke tech company", "role yang krusial di lapangan".
+         - PM Truvisor B2B (Manage Principal & Distribute to Partner) -> Ganti dengan istilah "peran jembatan antara principal global dan partner lokal", "kerjaan B2B yang ngurusin jatah distribusi produk ke partner", "peran komersial/sales enablement". JANGAN sesekali menggantinya dengan istilah PM developer tech yang bikin software/desain web.
          - Gaji 17jt -> Ganti dengan istilah "gaji di atas rata-rata", "gaji dua digit", atau "gaji nyaman".
-         - Shopee/TikTok/Truvisor -> Ganti dengan "perusahaan tech raksasa", "startup unicorn", atau "partner B2B".
-    3. Fokuslah menceritakan VALUE dari pengalaman kerja tersebut (cara negosiasinya, taktik membaca politik kantornya, cara bertahan hidupnya) dibanding menceritakan label profilnya.
+         - Shopee/TikTok/Soltius -> Ganti dengan "perusahaan tech raksasa", "startup unicorn", atau "partner B2B".
+    4. Fokuslah menceritakan VALUE dari pengalaman kerja tersebut (cara negosiasinya, cara meluluhkan partner bisnis, taktik membagi jatah prinsipal, cara bertahan di tengah politik kantor) dibanding menceritakan label profilnya.
 
     =========================================
     🚨 ATURAN BAHASA TUTUR (WAJIB DIPATUHI):
@@ -92,7 +93,7 @@ def generate_script_with_ai(title, channel, video_url):
     - [HOOK (0-5s)]: Harus berupa pernyataan blunt, sindiran halus, atau situasi POV yang bikin orang berhenti scroll karena merasa disindir atau relate. Hindari kata seru dramatis.
     - [AGITATE (5-20s)]: Goreng masalahnya sampai terasa menyesakkan. Bikin penonton merasa "Gue banget!". Fokus pada emosi 'ketidakadilan di kantor'.
     - [SOLUTION (20-50s)]: Berikan taktik bertahan hidup (survival tactics) yang praktis, cerdas, sedikit licik tapi realistis. Bukan saran teori HRD yang naif.
-    - [CTA (50-60s)]: JANGAN tanya "Menurut kalian gimana?". Pancing mereka untuk curhat colongan, berbagi drama, atau mengeluhkan bos mereka di kolom komentar.
+    - [CTA (50-60s)]: JANGAN tanya "Menurut kalian gimana?". Pancing mereka untuk curhat colongan, berbagi drama, atau mengeluhkan bos/partner mereka di kolom komentar.
 
     =========================================
     INPUT DATA:
@@ -116,7 +117,7 @@ def generate_script_with_ai(title, channel, video_url):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
     
-    # Menggunakan endpoint "/v1beta/" yang menyokong penuh Gemini 2.5 Free Tier
+    # Menggunakan endpoint "/v1beta/" yang mendukung penuh Gemini 2.5 Free Tier
     models_to_try = ["gemini-2.5-flash", "gemini-2.5-pro"]
     backoff_delays = [1, 2, 4]
     last_error_msg = ""
@@ -127,7 +128,7 @@ def generate_script_with_ai(title, channel, video_url):
             try:
                 response = requests.post(url, json=payload, headers=headers, timeout=30)
                 
-                # Mengesan ralat konfigurasi secara serta-merta (400, 401, 403, 404, 429)
+                # Deteksi error konfigurasi secara instan (400, 401, 403, 404, 429)
                 if response.status_code in [400, 401, 403, 404, 429]:
                     try:
                         err_json = response.json()
@@ -136,11 +137,11 @@ def generate_script_with_ai(title, channel, video_url):
                         err_msg = response.text
                     
                     if response.status_code == 429:
-                        return "⚠️ <b>Ralat API Google Gemini (429 - Had Kadar Dilampaui):</b> Had kuota percuma akaun anda telah habis sementara.\n\n<i>Google mengehadkan akaun Free Tier maksimum 15 permintaan seminit. Sila tunggu 1-2 minit kemudian cuba lagi, bos!</i>"
+                        return "⚠️ <b>Google Gemini API Error (429 - Rate Limit Exceeded):</b> Batas kuota gratis Anda sedang habis sementara.\n\n<i>Google membatasi akun Free Tier maksimal 15 kali request per menit. Silakan tunggu 1-2 menit lalu coba kembali, bos!</i>"
                     else:
-                        return f"⚠️ <b>Ralat API Google Gemini ({response.status_code}):</b> {err_msg}\n\n" \
-                               f"👉 <b>CARA PENYELESAIAN SEGERA:</b>\n" \
-                               f"Sila <u>klik pautan Google Cloud yang tertera dalam ralat di atas</u> (jika ada), pastikan anda log masuk ke akaun Google yang betul, kemudian klik butang <b>Enable/Aktifkan</b> pada halaman tersebut!"
+                        return f"⚠️ <b>Google Gemini API Error ({response.status_code}):</b> {err_msg}\n\n" \
+                               f"👉 <b>CARA FIX INSTAN:</b>\n" \
+                               f"Silakan <u>klik link Google Cloud yang tertera di pesan error di atas</u> (jika ada), pastikan Anda masuk ke akun Google yang benar, lalu klik tombol <b>Enable/Aktifkan</b> pada halaman tersebut!"
                 
                 response.raise_for_status()
                 res_data = response.json()
@@ -148,10 +149,10 @@ def generate_script_with_ai(title, channel, video_url):
                 return ai_text
             except Exception as e:
                 last_error_msg = str(e)
-                print(f"⚠️ Gagal mencuba model {model_name} pada cubaan ke-{attempt+1}: {e}")
+                print(f"⚠️ Gagal mencoba model {model_name} pada percobaan ke-{attempt+1}: {e}")
             time.sleep(backoff_delays[attempt])
             
-    return f"⚠️ <b>Ralat API Gemini:</b> Semua pelayan Google Gemini sedang sibuk atau mengalami gangguan sementara.\n\nButiran ralat terakhir: <code>{last_error_msg}</code>\n\n<i>Sila cuba klik jana semula seketika lagi, bos!</i>"
+    return f"⚠️ <b>Gemini API Error:</b> Seluruh server Google Gemini sedang sibuk atau mengalami gangguan sementara.\n\nDetail error terakhir: <code>{last_error_msg}</code>\n\n<i>Silakan coba klik generate kembali beberapa saat lagi, bos!</i>"
 
 def send_script_with_rating_buttons(text, title):
     url = f"https://api.telegram.org/bot{MAGNUS_TOKEN}/sendMessage"
@@ -183,7 +184,7 @@ def send_plain_message(text):
     except: pass
 
 # ============================================================
-# LAPISAN SAMBUNGAN HTTP SERVER (LALUAN TOL DALAMAN RAILWAY)
+# LAYER KONEKSI HTTP SERVER (JALUR TOL INTERNAL RAILWAY)
 # ============================================================
 class MagnusHTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -208,10 +209,10 @@ class MagnusHTTPHandler(BaseHTTPRequestHandler):
 
 def process_internal_trigger(title, channel, video_url):
     global CURRENT_AGENT_DATA
-    send_plain_message(f"⚡ <b>Magnus AI Agent:</b> Menerima arahan terus daripada Carl! Mula memikirkan skrip untuk: <i>\"{title}\"</i>...")
+    send_plain_message(f"⚡ <b>Magnus AI Agent:</b> Menerima instruksi langsung dari Carl! Mulai memikirkan skrip untuk: <i>\"{title}\"</i>...")
     script = generate_script_with_ai(title, channel, video_url)
     
-    # PENAPIS PINTAR: Jika output berupa teks ralat, hantar sebagai mesej biasa tanpa butang penilaian
+    # SMART FILTER: Jika output berupa error teks, kirim sebagai pesan biasa tanpa tombol rating
     if script.startswith("⚠️"):
         send_plain_message(script)
     else:
@@ -221,16 +222,16 @@ def process_internal_trigger(title, channel, video_url):
 def run_http_server():
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(('0.0.0.0', port), MagnusHTTPHandler)
-    print(f"🖥️ Pelayan HTTP Magnus berjalan pada port {port}...")
+    print(f"🖥️ Magnus HTTP Server berjalan di port {port}...")
     server.serve_forever()
 
 # ============================================================
-# GELUNGAN TUNTUTAN TELEGRAM (DENGAN PENGESAN BALASAN AUTO-REVISI)
+# TELEGRAM POLLING LOOP (DILENGKAPI DETEKTOR REPLY AUTO-REVISE)
 # ============================================================
 def listen_to_carl():
     offset = None
     global CURRENT_AGENT_DATA, USER_STATE
-    print("🧙‍♂️ Ejen AI Magnus bersedia menerima klik butang penilaian anda...")
+    print("🧙‍♂️ Magnus AI Agent standby menangkap klik tombol rating Anda...")
     
     while True:
         try:
@@ -255,7 +256,7 @@ def listen_to_carl():
                         }
                         
                         if rating == 1:
-                            send_plain_message("👌 <b>Noted:</b> Skrip dinilai <b>Acceptable</b>. Tidak disimpan ke dalam memori.")
+                            send_plain_message("👌 <b>Noted:</b> Skrip dinilai <b>Acceptable</b>. Tidak disimpan ke memori.")
                         else:
                             save_memory({
                                 "title": CURRENT_AGENT_DATA.get("title", "Konten"),
@@ -263,29 +264,29 @@ def listen_to_carl():
                                 "script": CURRENT_AGENT_DATA.get("script", ""),
                                 "feedback": labels[rating]
                             })
-                            send_plain_message(f"🧠 <b>Memori Dikemas Kini:</b> Magnus mempelajari gaya skrip ini dengan pemberat <b>Penilaian {rating}/4</b>.")
+                            send_plain_message(f"🧠 <b>Memori Diupdate:</b> Magnus mempelajari gaya skrip ini dengan bobot <b>Rating {rating}/4</b>.")
                     
                     elif cb_data.startswith("rev_"):
                         USER_STATE[TELEGRAM_CHAT_ID] = "WAITING_REVISION"
-                        send_plain_message("✍️ <b>Kritik Manual:</b> Bahagian mana yang kurang memuaskan, bos? Taip pembetulan anda di sini...")
+                        send_plain_message("✍️ <b>Kritik Manual:</b> Bagian mana yang kurang oke, bos? Ketik koreksinya langsung di sini...")
                 
                 message_obj = update.get("message") or update.get("edited_message")
                 if message_obj and "text" in message_obj:
                     msg_text = message_obj["text"].strip()
                     
-                    # PENGESAN PINTAR: Semak jika pengguna terus membalas mesej draf Magnus
+                    # DETEKSI SMART: Cek apakah user langsung melakukan reply manual ke pesan draf Magnus
                     is_reply_to_magnus = False
                     replied_text = ""
                     reply_to = message_obj.get("reply_to_message")
                     if reply_to and "text" in reply_to:
                         replied_text = reply_to["text"]
-                        # Semak identiti bot Magnus di dalam mesej yang dibalas
+                        # Cek identitas bot Magnus di dalam pesan yang di-reply
                         if "MAGNUS — AI Agent" in replied_text or "MAGNUS" in replied_text:
                             is_reply_to_magnus = True
                     
-                    # Jalankan jika dalam mod sedia ATAU pengguna terus membalas draf secara spontan
+                    # Eksekusi jika dalam mode standby ATAU jika user langsung me-reply draf Magnus secara spontan
                     if USER_STATE.get(TELEGRAM_CHAT_ID) == "WAITING_REVISION" or is_reply_to_magnus:
-                        # Ekstrak tajuk asal daripada draf skrip agar memori kekal sepadan
+                        # Ekstrak judul asli dari draf skrip yang di-reply agar memori tetap sinkron walau reply skrip jadul
                         extracted_title = "Konten"
                         if is_reply_to_magnus:
                             title_match = re.search(r"Inspirasi Konten:\s*(.*)", replied_text)
@@ -296,7 +297,7 @@ def listen_to_carl():
                         else:
                             extracted_title = CURRENT_AGENT_DATA.get("title", "Konten")
                             
-                        # Dapatkan kandungan skrip yang dikritik
+                        # Dapatkan konten skrip yang dikritik
                         saved_script = replied_text if is_reply_to_magnus else CURRENT_AGENT_DATA.get("script", "")
                         
                         save_memory({
@@ -306,7 +307,7 @@ def listen_to_carl():
                             "feedback": msg_text
                         })
                         
-                        send_plain_message(f"🧠 <b>Memori Dikemas Kini via Balasan:</b> Kritik anda untuk skrip <i>\"{extracted_title}\"</i> dicatat: <i>\"{msg_text}\"</i>. Magnus akan mempelajari corak pembetulan ini pada draf seterusnya!")
+                        send_plain_message(f"💡 <b>Memori Diupdate via Reply:</b> Kritik Anda untuk skrip <i>\"{extracted_title}\"</i> dicatat: <i>\"{msg_text}\"</i>. Magnus akan mempelajari pola revisi ini pada draf berikutnya!")
                         USER_STATE[TELEGRAM_CHAT_ID] = None
                         
         except: time.sleep(5)
